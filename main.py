@@ -93,10 +93,18 @@ def buy_spot():
 
 # ===== SELL (количество монет, AXS) =====
 def sell_spot():
-    global total_qty, steps
+    global steps
 
-    if steps <= 0 or total_qty <= 0:
-        return {"error": "nothing to sell"}
+    if steps <= 0:
+        return {"error": "no steps to sell"}
+
+    avail_qty = get_spot_balance()
+
+    if avail_qty <= 0:
+        return {"error": "no balance"}
+
+    sell_percent = 1 / steps
+    sell_qty = round(avail_qty * sell_percent, 6)
 
     path = "/api/v5/trade/order"
     url = BASE_URL + path
@@ -106,7 +114,7 @@ def sell_spot():
         "tdMode": "cash",
         "side": "sell",
         "ordType": "market",
-        "sz": str(round(sell_qty, 6))
+        "sz": str(sell_qty)
     }
 
     body_json = json.dumps(body)
