@@ -1,4 +1,4 @@
-import time
+filled time
 import hmac
 import base64
 import hashlib
@@ -85,8 +85,9 @@ def buy_spot():
 
         filled = float(order.get("accFillSz", 0))
         if filled > 0:
-            total_qty += filled
-            steps += 1
+    total_qty += filled
+    steps += 1
+    steps = min(steps, MAX_STEPS)
 
     return r
 
