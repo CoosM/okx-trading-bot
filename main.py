@@ -77,11 +77,26 @@ def buy_spot():
 def sell_spot():
     state = load_state()
 
-    if state["step"] <= 0 or state["asset_qty"] <= 0:
-        return {"SELL": "SKIP", "reason": "no position"}
+    step = state.get("step", 0)
+    asset_qty = state.get("asset_qty", 0)
 
-    sell_percent = 1 / state["step"]
-    sell_qty = round(state["asset_qty"] * sell_percent, 3)
+    print("SELL REQUEST | step:", step, "asset_qty:", asset_qty)
+
+    if step <= 0:
+        return {"SELL": "SKIP", "reason": "step <= 0"}
+
+    sell_percent = 1 / step
+    raw_qty = asset_qty * sell_percent
+
+    # универсальное округление
+    sell_qty = round(raw_qty, 4)
+
+    if sell_qty <= 0:
+        return {
+            "SELL": "SKIP",
+            "reason": "sell_qty too small",
+            "raw_qty": raw_qty
+        }
 
     path = "/api/v5/trade/order"
     url = BASE_URL + path
@@ -96,17 +111,29 @@ def sell_spot():
 
     body_json = json.dumps(body)
     headers = okx_headers("POST", path, body_json)
+
     res = requests.post(url, headers=headers, data=body_json).json()
 
-    state["asset_qty"] -= sell_qty
-    state["step"] -= 1
+    print("OKX SELL RESPONSE:", res)
+
+    # ===== ПРОВЕРКА OKX =====
+    if res.get("code") != "0":
+        return {
+            "SELL": "ERROR",
+            "okx": res
+        }
+
+    # ===== УСПЕХ =====
+    state["asset_qty"] = round(asset_qty - sell_qty, 8)
+    state["step"] = step - 1
     save_state(state)
 
     return {
         "SELL": "OK",
         "sold_qty": sell_qty,
         "percent": round(sell_percent * 100, 2),
-        "step_after": state["step"]
+        "step_after": state["step"],
+        "asset_left": state["asset_qty"]
     }
 
 # ===== WEBHOOK =====
