@@ -83,7 +83,6 @@ def buy_spot():
 
         filled = float(order.get("fillSz", 0))
         if filled > 0:
-            total_qty += filled
             steps += 1
             steps = min(steps, MAX_STEPS)
 
