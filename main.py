@@ -47,4 +47,17 @@ def webhook():
         "OK-ACCESS-KEY": OKX_API_KEY,
         "OK-ACCESS-SIGN": sign(timestamp, "POST", path, body),
         "OK-ACCESS-TIMESTAMP": timestamp,
-        "OK-ACCESS
+        "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE,
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, headers=headers, data=body)
+
+    print("📊 OKX status:", response.status_code)
+    print("📊 OKX response:", response.text)
+
+    return jsonify({"status": "ok"}), 200
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
