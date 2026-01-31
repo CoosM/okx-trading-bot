@@ -115,7 +115,6 @@ def sell_spot():
     r = requests.post(url, headers=headers, data=body_json).json()
 
     if r.get("code") == "0":
-        total_qty -= sell_qty
         steps -= 1
 
     return r
