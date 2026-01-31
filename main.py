@@ -79,15 +79,14 @@ def buy_spot():
 
     r = requests.post(url, headers=headers, data=body_json).json()
 
-    # считаем шаг
     if r.get("code") == "0" and r.get("data"):
         order = r["data"][0]
-
         filled = float(order.get("accFillSz", 0))
-if filled > 0:
-    total_qty += filled
-    steps += 1
-    steps = min(steps, MAX_STEPS)
+
+        if filled > 0:
+            total_qty += filled
+            steps += 1
+            steps = min(steps, MAX_STEPS)
 
     return r
 
