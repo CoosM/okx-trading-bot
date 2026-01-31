@@ -23,11 +23,6 @@ def sign(timestamp, method, path, body):
 def webhook():
     data = request.json
     print("Webhook received:", data)
-
-    if data.get("test") == "BUY" and TEST_MODE:
-        print("🟡 TEST MODE: BUY получен")
-        print("Данные:", data)
-        return {"status": "test_ok"}, 200
         
     body = json.dumps(data)
     path = "/api/v5/trade/order"
