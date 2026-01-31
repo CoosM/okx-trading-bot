@@ -42,6 +42,21 @@ def okx_headers(method, path, body=""):
         "Content-Type": "application/json"
     }
 
+# ===== БАЛАНС СПОТ =====
+def get_spot_balance():
+    path = f"/api/v5/account/balance?ccy={SYMBOL.split('-')[0]}"
+    url = BASE_URL + path
+    headers = okx_headers("GET", path)
+
+    r = requests.get(url, headers=headers).json()
+
+    if r.get("code") == "0":
+        details = r["data"][0]["details"]
+        if details:
+            return float(details[0]["availBal"])
+
+    return 0.0
+    
 # ===== BUY (на сумму USDT) =====
 def buy_spot():
     global total_qty, steps
