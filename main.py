@@ -1,32 +1,32 @@
-import time
-import hmac
-import base64
-import hashlib
-import json
-import requests
-import os
+import time, hmac, base64, hashlib, json, requests, os
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-steps = 0
-MAX_STEPS = 10
-
-# ===== ENV НАСТРОЙКИ OKX =====
+# ===== ENV OKX =====
 API_KEY = os.getenv("OKX_API_KEY")
 API_SECRET = os.getenv("OKX_API_SECRET")
 PASSPHRASE = os.getenv("OKX_PASSPHRASE")
 
 BASE_URL = "https://www.okx.com"
 
-SYMBOL = os.getenv("SYMBOL", "AXS-USDT")   # спот пара
-BUY_USDT = float(os.getenv("BUY_USDT", "16"))     # сумма покупки в USDT
+SYMBOL = os.getenv("SYMBOL", "AXS-USDT")
+BUY_USDT = os.getenv("BUY_USDT", "16")
 
-# ===== ПРОВЕРКА (чтобы не упал молча) =====
-if not API_KEY or not API_SECRET or not PASSPHRASE:
-    raise Exception("❌ OKX API keys not set in Environment Variables")
+STATE_FILE = "state.json"
 
-# ===== ПОДПИСЬ OKX =====
+# ===== STATE =====
+def load_state():
+    if not os.path.exists(STATE_FILE):
+        return {"step": 0, "asset_qty": 0}
+    with open(STATE_FILE, "r") as f:
+        return json.load(f)
+
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+# ===== SIGN =====
 def okx_headers(method, path, body=""):
     ts = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
     msg = ts + method + path + body
@@ -42,25 +42,8 @@ def okx_headers(method, path, body=""):
         "Content-Type": "application/json"
     }
 
-# ===== БАЛАНС СПОТ =====
-def get_spot_balance():
-    path = f"/api/v5/account/balance?ccy={SYMBOL.split('-')[0]}"
-    url = BASE_URL + path
-    headers = okx_headers("GET", path)
-
-    r = requests.get(url, headers=headers).json()
-
-    if r.get("code") == "0":
-        details = r["data"][0]["details"]
-        if details:
-            return float(details[0]["availBal"])
-
-    return 0.0
-    
-# ===== BUY (на сумму USDT) =====
+# ===== BUY =====
 def buy_spot():
-    global steps
-
     path = "/api/v5/trade/order"
     url = BASE_URL + path
 
@@ -75,38 +58,30 @@ def buy_spot():
 
     body_json = json.dumps(body)
     headers = okx_headers("POST", path, body_json)
+    res = requests.post(url, headers=headers, data=body_json).json()
 
-    r = requests.post(url, headers=headers, data=body_json).json()
+    try:
+        fill = res["data"][0]
+        qty = float(fill["accFillSz"])
+    except:
+        return res
 
-    if r.get("code") == "0" and r.get("data"):
-        order = r["data"][0]
+    state = load_state()
+    state["step"] += 1
+    state["asset_qty"] += qty
+    save_state(state)
 
-        filled = float(order.get("accFillSz", 0))
-        if filled > 0:
-            steps += 1
-            steps = min(steps, MAX_STEPS)
+    return {"BUY": "OK", "step": state["step"], "qty": qty}
 
-            print(f"🟢 BUY OK | filled={filled} | steps={steps}")
-
-    return r
-
-# ===== SELL (количество монет, AXS) =====
+# ===== SELL (1 / step) =====
 def sell_spot():
-    global steps
+    state = load_state()
 
-    if steps <= 0:
-        print("⛔ SELL BLOCKED | steps=0")
-        return {"error": "no steps to sell"}
+    if state["step"] <= 0 or state["asset_qty"] <= 0:
+        return {"SELL": "SKIP", "reason": "no position"}
 
-    avail_qty = get_spot_balance()
-
-    if avail_qty <= 0:
-        print("⛔ SELL BLOCKED | no balance")
-        return {"error": "no balance"}
-
-    sell_qty = round(avail_qty / steps, 6)
-
-    print(f"🔴 SELL TRY | qty={sell_qty} | steps={steps}")
+    sell_percent = 1 / state["step"]
+    sell_qty = round(state["asset_qty"] * sell_percent, 6)
 
     path = "/api/v5/trade/order"
     url = BASE_URL + path
@@ -121,32 +96,32 @@ def sell_spot():
 
     body_json = json.dumps(body)
     headers = okx_headers("POST", path, body_json)
+    res = requests.post(url, headers=headers, data=body_json).json()
 
-    r = requests.post(url, headers=headers, data=body_json).json()
+    state["asset_qty"] -= sell_qty
+    state["step"] -= 1
+    save_state(state)
 
-    if r.get("code") == "0":
-        steps -= 1
-
-        print(f"✅ SELL OK | steps NOW={steps}")
-
-    return r
+    return {
+        "SELL": "OK",
+        "sold_qty": sell_qty,
+        "percent": round(sell_percent * 100, 2),
+        "step_after": state["step"]
+    }
 
 # ===== WEBHOOK =====
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-    print("📩 Сигнал:", data)
-
     action = data.get("action")
 
     if action == "buy":
-        result = buy_spot()
-    elif action == "sell":
-        result = sell_spot()
-    else:
-        return jsonify({"error": "unknown action"}), 400
+        return jsonify(buy_spot())
 
-    return jsonify(result)
+    if action == "sell":
+        return jsonify(sell_spot())
+
+    return jsonify({"error": "unknown action"}), 400
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
