@@ -4,22 +4,27 @@ import base64
 import hashlib
 import json
 import requests
+import os
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# ===== НАСТРОЙКИ OKX =====
-API_KEY = "OKX_API_KEY"
-API_SECRET = "OKX_API_SECRET"
-PASSPHRASE = "OKX_PASSPHRASE"
+# ===== ENV НАСТРОЙКИ OKX =====
+API_KEY = os.getenv("OKX_API_KEY")
+API_SECRET = os.getenv("OKX_API_SECRET")
+PASSPHRASE = os.getenv("OKX_PASSPHRASE")
 
 BASE_URL = "https://www.okx.com"
 
-SYMBOL = "AXS-USDT"      # спот пара
-SIZE = "20"              # сумма покупки в USDT (для buy)
-SELL_SIZE = "5"      # количество BTC для продажи
+SYMBOL = os.getenv("SYMBOL", "AXS-USDT")   # спот пара
+BUY_USDT = os.getenv("BUY_USDT", "20")     # сумма покупки в USDT
+SELL_SIZE = os.getenv("SELL_SIZE", "5")    # количество AXS для продажи
 
-# ===== ПОДПИСЬ =====
+# ===== ПРОВЕРКА (чтобы не упал молча) =====
+if not API_KEY or not API_SECRET or not PASSPHRASE:
+    raise Exception("❌ OKX API keys not set in Environment Variables")
+
+# ===== ПОДПИСЬ OKX =====
 def okx_headers(method, path, body=""):
     ts = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
     msg = ts + method + path + body
@@ -45,15 +50,15 @@ def buy_spot():
         "tdMode": "cash",
         "side": "buy",
         "ordType": "market",
-        "tgtCcy": "quote_ccy",
-        "sz": SIZE        # сумма в USDT
+        "tgtCcy": "quote_ccy",   # sz = USDT
+        "sz": BUY_USDT
     }
 
     body_json = json.dumps(body)
     headers = okx_headers("POST", path, body_json)
     return requests.post(url, headers=headers, data=body_json).json()
 
-# ===== SELL (количество монет) =====
+# ===== SELL (количество монет, AXS) =====
 def sell_spot():
     path = "/api/v5/trade/order"
     url = BASE_URL + path
@@ -63,7 +68,7 @@ def sell_spot():
         "tdMode": "cash",
         "side": "sell",
         "ordType": "market",
-        "sz": SELL_SIZE   # количество BTC
+        "sz": SELL_SIZE
     }
 
     body_json = json.dumps(body)
@@ -74,7 +79,7 @@ def sell_spot():
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-    print("Сигнал:", data)
+    print("📩 Сигнал:", data)
 
     action = data.get("action")
 
