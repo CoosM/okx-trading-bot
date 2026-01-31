@@ -59,7 +59,6 @@ def buy_spot():
 
 # ===== SELL (количество монет, AXS) =====
 def sell_spot():
-def sell_spot():
     path = "/api/v5/trade/order"
     url = BASE_URL + path
 
