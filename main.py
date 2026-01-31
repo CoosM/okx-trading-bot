@@ -59,7 +59,7 @@ def get_spot_balance():
     
 # ===== BUY (на сумму USDT) =====
 def buy_spot():
-    global total_qty, steps
+    global steps
 
     path = "/api/v5/trade/order"
     url = BASE_URL + path
@@ -85,6 +85,8 @@ def buy_spot():
         if filled > 0:
             steps += 1
             steps = min(steps, MAX_STEPS)
+
+            print(f"🟢 BUY OK | filled={filled} | steps={steps}")
 
     return r
 
