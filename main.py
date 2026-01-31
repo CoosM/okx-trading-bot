@@ -20,7 +20,7 @@ PASSPHRASE = os.getenv("OKX_PASSPHRASE")
 BASE_URL = "https://www.okx.com"
 
 SYMBOL = os.getenv("SYMBOL", "AXS-USDT")   # спот пара
-BUY_USDT = float(os.getenv("BUY_USDT", "20"))     # сумма покупки в USDT
+BUY_USDT = float(os.getenv("BUY_USDT", "16"))     # сумма покупки в USDT
 
 # ===== ПРОВЕРКА (чтобы не упал молча) =====
 if not API_KEY or not API_SECRET or not PASSPHRASE:
