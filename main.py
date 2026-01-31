@@ -9,6 +9,9 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+total_qty = 0.0
+steps = 0
+
 # ===== ENV НАСТРОЙКИ OKX =====
 API_KEY = os.getenv("OKX_API_KEY")
 API_SECRET = os.getenv("OKX_API_SECRET")
