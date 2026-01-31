@@ -43,7 +43,9 @@ def okx_headers(method, path, body=""):
     }
 
 # ===== BUY (на сумму USDT) =====
-def buy_spot():
+def buy_spot(buy_qty):
+    global total_qty, steps
+
     path = "/api/v5/trade/order"
     url = BASE_URL + path
 
@@ -52,16 +54,28 @@ def buy_spot():
         "tdMode": "cash",
         "side": "buy",
         "ordType": "market",
-        "tgtCcy": "quote_ccy",   # sz = USDT
-        "sz": BUY_USDT
+        "sz": str(buy_qty)
     }
 
     body_json = json.dumps(body)
     headers = okx_headers("POST", path, body_json)
-    return requests.post(url, headers=headers, data=body_json).json()
+    res = requests.post(url, headers=headers, data=body_json).json()
+
+    if res.get("code") == "0":
+        total_qty += float(buy_qty)
+        steps += 1
+
+    return res
 
 # ===== SELL (количество монет, AXS) =====
 def sell_spot():
+    global total_qty, steps
+
+    if steps <= 0 or total_qty <= 0:
+        return {"error": "nothing to sell"}
+
+    sell_qty = total_qty / steps   # 🔥 1 шаг из N
+
     path = "/api/v5/trade/order"
     url = BASE_URL + path
 
@@ -70,12 +84,18 @@ def sell_spot():
         "tdMode": "cash",
         "side": "sell",
         "ordType": "market",
-        "sz": SELL_SIZE
+        "sz": str(round(sell_qty, 6))
     }
 
     body_json = json.dumps(body)
     headers = okx_headers("POST", path, body_json)
-    return requests.post(url, headers=headers, data=body_json).json()
+    res = requests.post(url, headers=headers, data=body_json).json()
+
+    if res.get("code") == "0":
+        total_qty -= sell_qty
+        steps -= 1
+
+    return res
 
 # ===== WEBHOOK =====
 @app.route("/webhook", methods=["POST"])
