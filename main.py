@@ -59,11 +59,7 @@ def buy_spot():
 
 # ===== SELL (количество монет, AXS) =====
 def sell_spot():
-    qty = get_spot_balance()
-
-    if qty <= 0:
-        return {"error": "no balance"}
-
+def sell_spot():
     path = "/api/v5/trade/order"
     url = BASE_URL + path
 
@@ -72,7 +68,7 @@ def sell_spot():
         "tdMode": "cash",
         "side": "sell",
         "ordType": "market",
-        "sz": str(qty)
+        "sz": SELL_SIZE
     }
 
     body_json = json.dumps(body)
