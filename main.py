@@ -3,6 +3,16 @@ import os, time, hmac, hashlib, base64, json, requests
 
 app = Flask(__name__)
 
+result = tradeAPI.place_order(
+    instId="BTC-USDT", 
+    tdMode="cross", 
+    side="buy", 
+    ordType="market", 
+    sz="0.001"
+)
+print(f"OKX Response: {result}") # Это покажет реальную причину в логах Render
+
+
 OKX_API_KEY = os.getenv("OKX_API_KEY")
 OKX_SECRET_KEY = os.getenv("OKX_SECRET_KEY")
 OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE")
