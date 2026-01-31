@@ -88,7 +88,7 @@ if r.get("code") == "0" and r.get("data"):
         steps += 1
         steps = min(steps, MAX_STEPS)
 
-    return r
+return r
 
 # ===== SELL (количество монет, AXS) =====
 def sell_spot():
