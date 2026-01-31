@@ -60,6 +60,7 @@ def get_spot_balance():
     
 # ===== BUY (на сумму USDT) =====
 def buy_spot():
+def buy_spot():
     global total_qty, steps
 
     path = "/api/v5/trade/order"
@@ -79,16 +80,17 @@ def buy_spot():
 
     r = requests.post(url, headers=headers, data=body_json).json()
 
-if r.get("code") == "0" and r.get("data"):
-    order = r["data"][0]
+    # ✅ ВСЁ ВНУТРИ ФУНКЦИИ
+    if r.get("code") == "0" and r.get("data"):
+        order = r["data"][0]
 
-    filled = float(order.get("fillSz", 0))
-    if filled > 0:
-        total_qty += filled
-        steps += 1
-        steps = min(steps, MAX_STEPS)
+        filled = float(order.get("fillSz", 0))
+        if filled > 0:
+            total_qty += filled
+            steps += 1
+            steps = min(steps, MAX_STEPS)
 
-return r
+    return r
 
 # ===== SELL (количество монет, AXS) =====
 def sell_spot():
