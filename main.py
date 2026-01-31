@@ -81,7 +81,7 @@ def sell_spot():
         return {"SELL": "SKIP", "reason": "no position"}
 
     sell_percent = 1 / state["step"]
-    sell_qty = round(state["asset_qty"] * sell_percent, 6)
+    sell_qty = round(state["asset_qty"] * sell_percent, 3)
 
     path = "/api/v5/trade/order"
     url = BASE_URL + path
