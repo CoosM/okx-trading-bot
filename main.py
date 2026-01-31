@@ -95,15 +95,19 @@ def sell_spot():
     global steps
 
     if steps <= 0:
+        print("⛔ SELL BLOCKED | steps=0")
         return {"error": "no steps to sell"}
 
     avail_qty = get_spot_balance()
 
     if avail_qty <= 0:
+        print("⛔ SELL BLOCKED | no balance")
         return {"error": "no balance"}
 
-    sell_percent = 1 / steps
-    sell_qty = round(avail_qty * sell_percent, 6)
+    sell_qty = round(avail_qty / steps, 6)
+
+    # ← ВОТ СЮДА
+    print(f"🔴 SELL TRY | qty={sell_qty} | steps={steps}")
 
     path = "/api/v5/trade/order"
     url = BASE_URL + path
@@ -123,6 +127,9 @@ def sell_spot():
 
     if r.get("code") == "0":
         steps -= 1
+
+        # ← И СЮДА
+        print(f"✅ SELL OK | steps NOW={steps}")
 
     return r
 
