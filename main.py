@@ -25,6 +25,7 @@ def webhook():
     print("Webhook received:", data)
         
     body = json.dumps(data)
+print("➡️ Отправка ордера в OKX:", body)
     path = "/api/v5/trade/order"
     url = OKX_BASE_URL + path
     timestamp = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
