@@ -3,7 +3,7 @@ import os, time, hmac, hashlib, base64, json, requests
 
 app = Flask(__name__)
 
-TEST_MODE = True
+TEST_MODE = False
 
 OKX_API_KEY = os.getenv("OKX_API_KEY")
 OKX_SECRET_KEY = os.getenv("OKX_SECRET_KEY")
