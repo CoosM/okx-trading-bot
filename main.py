@@ -98,8 +98,6 @@ def sell_spot():
     if steps <= 0 or total_qty <= 0:
         return {"error": "nothing to sell"}
 
-    sell_qty = total_qty / steps   # ← ВАЖНО
-
     path = "/api/v5/trade/order"
     url = BASE_URL + path
 
