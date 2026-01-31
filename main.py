@@ -43,7 +43,7 @@ def okx_headers(method, path, body=""):
     }
 
 # ===== BUY (на сумму USDT) =====
-def buy_spot(buy_qty):
+def buy_spot():
     global total_qty, steps
 
     path = "/api/v5/trade/order"
@@ -54,18 +54,22 @@ def buy_spot(buy_qty):
         "tdMode": "cash",
         "side": "buy",
         "ordType": "market",
-        "sz": str(buy_qty)
+        "tgtCcy": "quote_ccy",
+        "sz": BUY_USDT
     }
 
     body_json = json.dumps(body)
     headers = okx_headers("POST", path, body_json)
-    res = requests.post(url, headers=headers, data=body_json).json()
 
-    if res.get("code") == "0":
-        total_qty += float(buy_qty)
+    r = requests.post(url, headers=headers, data=body_json).json()
+
+    # считаем шаг
+    if r.get("code") == "0":
+        filled = float(r["data"][0]["fillSz"])
+        total_qty += filled
         steps += 1
 
-    return res
+    return r
 
 # ===== SELL (количество монет, AXS) =====
 def sell_spot():
@@ -74,7 +78,7 @@ def sell_spot():
     if steps <= 0 or total_qty <= 0:
         return {"error": "nothing to sell"}
 
-    sell_qty = total_qty / steps   # 🔥 1 шаг из N
+    sell_qty = total_qty / steps   # ← ВАЖНО
 
     path = "/api/v5/trade/order"
     url = BASE_URL + path
@@ -89,13 +93,14 @@ def sell_spot():
 
     body_json = json.dumps(body)
     headers = okx_headers("POST", path, body_json)
-    res = requests.post(url, headers=headers, data=body_json).json()
 
-    if res.get("code") == "0":
+    r = requests.post(url, headers=headers, data=body_json).json()
+
+    if r.get("code") == "0":
         total_qty -= sell_qty
         steps -= 1
 
-    return res
+    return r
 
 # ===== WEBHOOK =====
 @app.route("/webhook", methods=["POST"])
