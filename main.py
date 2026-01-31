@@ -18,7 +18,6 @@ BASE_URL = "https://www.okx.com"
 
 SYMBOL = os.getenv("SYMBOL", "AXS-USDT")   # спот пара
 BUY_USDT = os.getenv("BUY_USDT", "20")     # сумма покупки в USDT
-SELL_SIZE = os.getenv("SELL_SIZE", "5")    # количество AXS для продажи
 
 # ===== ПРОВЕРКА (чтобы не упал молча) =====
 if not API_KEY or not API_SECRET or not PASSPHRASE:
@@ -60,6 +59,11 @@ def buy_spot():
 
 # ===== SELL (количество монет, AXS) =====
 def sell_spot():
+    qty = get_spot_balance()
+
+    if qty <= 0:
+        return {"error": "no balance"}
+
     path = "/api/v5/trade/order"
     url = BASE_URL + path
 
@@ -68,7 +72,7 @@ def sell_spot():
         "tdMode": "cash",
         "side": "sell",
         "ordType": "market",
-        "sz": SELL_SIZE
+        "sz": str(qty)
     }
 
     body_json = json.dumps(body)
