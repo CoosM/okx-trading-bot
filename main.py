@@ -60,7 +60,6 @@ def get_spot_balance():
     
 # ===== BUY (на сумму USDT) =====
 def buy_spot():
-def buy_spot():
     global total_qty, steps
 
     path = "/api/v5/trade/order"
@@ -80,7 +79,6 @@ def buy_spot():
 
     r = requests.post(url, headers=headers, data=body_json).json()
 
-    # ✅ ВСЁ ВНУТРИ ФУНКЦИИ
     if r.get("code") == "0" and r.get("data"):
         order = r["data"][0]
 
