@@ -11,6 +11,7 @@ app = Flask(__name__)
 
 total_qty = 0.0
 steps = 0
+MAX_STEPS = 10
 
 # ===== ENV НАСТРОЙКИ OKX =====
 API_KEY = os.getenv("OKX_API_KEY")
