@@ -1,46 +1,19 @@
-from flask import Flask, request, jsonify
-import os, time, hmac, hashlib, base64, json, requests
-
-app = Flask(__name__)
-
-result = tradeAPI.place_order(
-    instId="BTC-USDT", 
-    tdMode="cross", 
-    side="buy", 
-    ordType="market", 
-    sz="0.001"
-)
-print(f"OKX Response: {result}") # Это покажет реальную причину в логах Render
-
-
-OKX_API_KEY = os.getenv("OKX_API_KEY")
-OKX_SECRET_KEY = os.getenv("OKX_SECRET_KEY")
-OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE")
-OKX_BASE_URL = "https://www.okx.com"
-
-
-def sign(timestamp, method, path, body):
-    msg = f"{timestamp}{method}{path}{body}"
-    mac = hmac.new(
-        OKX_SECRET_KEY.encode(),
-        msg.encode(),
-        hashlib.sha256
-    )
-    return base64.b64encode(mac.digest()).decode()
-
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
-    print("Webhook received:", data)
+    # 1. Получаем сырые данные, чтобы подпись была точной
+    body = request.get_data(as_text=True) 
+    if not body:
+        return "Empty body", 400
 
-    body = json.dumps(data)
-    print("➡️ Sending order to OKX:", body)
+    print("➡️ Received from TV:", body)
 
     path = "/api/v5/trade/order"
     url = OKX_BASE_URL + path
+    
+    # 2. OKX требует строго ISO формат с миллисекундами
     timestamp = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
 
+    # 3. Генерируем заголовки
     headers = {
         "OK-ACCESS-KEY": OKX_API_KEY,
         "OK-ACCESS-SIGN": sign(timestamp, "POST", path, body),
@@ -49,13 +22,10 @@ def webhook():
         "Content-Type": "application/json"
     }
 
+    # 4. Отправляем именно ТУ ЖЕ строку body, что подписали
     response = requests.post(url, headers=headers, data=body)
 
-    print("📊 OKX status:", response.status_code)
-    print("📩 OKX response:", response.text)
+    print("📊 OKX status code:", response.status_code)
+    print("📩 OKX full response:", response.text)
 
-    return jsonify({"status": "ok"}), 200
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    return jsonify(response.json()), response.status_code
