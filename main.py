@@ -106,7 +106,6 @@ def sell_spot():
 
     sell_qty = round(avail_qty / steps, 6)
 
-    # ← ВОТ СЮДА
     print(f"🔴 SELL TRY | qty={sell_qty} | steps={steps}")
 
     path = "/api/v5/trade/order"
@@ -128,7 +127,6 @@ def sell_spot():
     if r.get("code") == "0":
         steps -= 1
 
-        # ← И СЮДА
         print(f"✅ SELL OK | steps NOW={steps}")
 
     return r
