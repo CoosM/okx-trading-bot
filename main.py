@@ -3,6 +3,9 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+def log(msg):
+    print(msg, flush=True)
+
 # ===== ENV OKX =====
 API_KEY = os.getenv("OKX_API_KEY")
 API_SECRET = os.getenv("OKX_API_SECRET")
