@@ -13,12 +13,13 @@ BASE_URL = "https://www.okx.com"
 SYMBOL = os.getenv("SYMBOL", "AXS-USDT")
 BUY_USDT = os.getenv("BUY_USDT", "16")
 
+MAX_STEPS = 10
 STATE_FILE = "state.json"
 
 # ===== STATE =====
 def load_state():
     if not os.path.exists(STATE_FILE):
-        return {"step": 0, "asset_qty": 0}
+        return {"step": 0, "asset_qty": 0.0}
     with open(STATE_FILE, "r") as f:
         return json.load(f)
 
@@ -44,9 +45,12 @@ def okx_headers(method, path, body=""):
 
 # ===== BUY =====
 def buy_spot():
-    path = "/api/v5/trade/order"
-    url = BASE_URL + path
+    state = load_state()
 
+    if state["step"] >= MAX_STEPS:
+        return {"BUY": "SKIP", "reason": "max steps reached"}
+
+    path = "/api/v5/trade/order"
     body = {
         "instId": SYMBOL,
         "tdMode": "cash",
@@ -58,49 +62,46 @@ def buy_spot():
 
     body_json = json.dumps(body)
     headers = okx_headers("POST", path, body_json)
-    res = requests.post(url, headers=headers, data=body_json).json()
+    res = requests.post(BASE_URL + path, headers=headers, data=body_json).json()
+
+    if res.get("code") != "0":
+        return {"BUY": "ERROR", "okx": res}
 
     try:
-        fill = res["data"][0]
-        qty = float(fill["accFillSz"])
+        qty = float(res["data"][0]["accFillSz"])
     except:
-        return res
+        return {"BUY": "ERROR", "okx": res}
 
-    state = load_state()
     state["step"] += 1
-    state["asset_qty"] += qty
+    state["asset_qty"] = round(state["asset_qty"] + qty, 8)
     save_state(state)
 
-    return {"BUY": "OK", "step": state["step"], "qty": qty}
+    return {
+        "BUY": "OK",
+        "step": state["step"],
+        "qty": qty,
+        "asset_total": state["asset_qty"]
+    }
 
 # ===== SELL (1 / step) =====
 def sell_spot():
     state = load_state()
 
-    step = state.get("step", 0)
-    asset_qty = state.get("asset_qty", 0)
+    step = state["step"]
+    asset_qty = state["asset_qty"]
 
-    print("SELL REQUEST | step:", step, "asset_qty:", asset_qty)
+    print("SELL REQUEST | step:", step, "| asset_qty:", asset_qty)
 
     if step <= 0:
         return {"SELL": "SKIP", "reason": "step <= 0"}
 
     sell_percent = 1 / step
-    raw_qty = asset_qty * sell_percent
-
-    # универсальное округление
-    sell_qty = round(raw_qty, 4)
+    sell_qty = round(asset_qty * sell_percent, 6)
 
     if sell_qty <= 0:
-        return {
-            "SELL": "SKIP",
-            "reason": "sell_qty too small",
-            "raw_qty": raw_qty
-        }
+        return {"SELL": "SKIP", "reason": "sell_qty too small"}
 
     path = "/api/v5/trade/order"
-    url = BASE_URL + path
-
     body = {
         "instId": SYMBOL,
         "tdMode": "cash",
@@ -111,21 +112,14 @@ def sell_spot():
 
     body_json = json.dumps(body)
     headers = okx_headers("POST", path, body_json)
+    res = requests.post(BASE_URL + path, headers=headers, data=body_json).json()
 
-    res = requests.post(url, headers=headers, data=body_json).json()
-
-    print("OKX SELL RESPONSE:", res)
-
-    # ===== ПРОВЕРКА OKX =====
     if res.get("code") != "0":
-        return {
-            "SELL": "ERROR",
-            "okx": res
-        }
+        return {"SELL": "ERROR", "okx": res}
 
-    # ===== УСПЕХ =====
+    # ===== SUCCESS =====
     state["asset_qty"] = round(asset_qty - sell_qty, 8)
-    state["step"] = step - 1
+    state["step"] -= 1
     save_state(state)
 
     return {
@@ -139,8 +133,7 @@ def sell_spot():
 # ===== WEBHOOK =====
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
-    action = data.get("action")
+    action = request.json.get("action")
 
     if action == "buy":
         return jsonify(buy_spot())
