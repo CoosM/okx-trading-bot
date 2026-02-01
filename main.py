@@ -1,4 +1,4 @@
-state time, hmac, base64, hashlib, json, requests, os
+import time, hmac, base64, hashlib, json, requests, os
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -16,10 +16,7 @@ BUY_USDT = os.getenv("BUY_USDT", "16")
 MAX_STEPS = 10
 STATE_FILE = "state.json"
 
-def log(msg):
-    print(msg, flush=True)
-
-# ===== STATE (ТОЛЬКО STEP) =====
+# ===== STATE (РўРћР›Р¬РљРћ STEP) =====
 def load_state():
     if not os.path.exists(STATE_FILE):
         return {"step": 0}
@@ -95,44 +92,24 @@ def buy_spot():
         "step": state["step"]
     }
 
-# ===== SELL (1 / step от реального баланса) =====
+# ===== SELL (1 / step РѕС‚ СЂРµР°Р»СЊРЅРѕРіРѕ Р±Р°Р»Р°РЅСЃР°) =====
 def sell_spot():
     state = load_state()
-    step = state.get("step", 0)
+    step = state["step"]
 
-    # --- STEP CHECK ---
     if step <= 0:
-        log(f"⛔ SELL BLOCKED | reason=step<=0 | step={step}")
-        return {"SELL": "SKIP", "reason": "step <= 0", "step": step}
+        return {"SELL": "SKIP", "reason": "step <= 0"}
 
-    # --- BALANCE CHECK ---
     balance = get_spot_balance()
 
     if balance <= 0:
-        log(f"⛔ SELL BLOCKED | reason=no_balance | balance={balance} | step={step}")
-        return {"SELL": "SKIP", "reason": "no balance", "step": step}
+        return {"SELL": "SKIP", "reason": "no balance on OKX"}
 
-    # --- QTY CALC ---
     sell_percent = 1 / step
     sell_qty = round(balance * sell_percent, 6)
 
     if sell_qty <= 0:
-        log(
-            f"⛔ SELL BLOCKED | reason=qty_too_small | "
-            f"balance={balance} | step={step} | qty={sell_qty}"
-        )
-        return {
-            "SELL": "SKIP",
-            "reason": "qty too small",
-            "step": step,
-            "balance": balance
-        }
-
-    # --- TRY SELL ---
-    log(
-        f"🔴 SELL TRY | balance={balance:.6f} | "
-        f"percent={sell_percent*100:.2f}% | qty={sell_qty} | step={step}"
-    )
+        return {"SELL": "SKIP", "reason": "sell_qty too small"}
 
     path = "/api/v5/trade/order"
     body = {
@@ -147,25 +124,16 @@ def sell_spot():
     headers = okx_headers("POST", path, body_json)
     res = requests.post(BASE_URL + path, headers=headers, data=body_json).json()
 
-    # --- OKX ERROR ---
     if res.get("code") != "0":
-        log(f"❌ SELL ERROR | okx={res}")
         return {"SELL": "ERROR", "okx": res}
 
-    # --- SUCCESS ---
     state["step"] -= 1
     save_state(state)
-
-    log(
-        f"✅ SELL OK | sold={sell_qty} | "
-        f"step_before={step} | step_now={state['step']}"
-    )
 
     return {
         "SELL": "OK",
         "sold_qty": sell_qty,
         "percent": round(sell_percent * 100, 2),
-        "step_before": step,
         "step_after": state["step"]
     }
 
