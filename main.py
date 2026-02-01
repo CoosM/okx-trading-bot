@@ -1,12 +1,15 @@
-import time, hmac, base64, hashlib, json, requests, os
+import time
+import hmac
+import base64
+import hashlib
+import json
+import requests
+import os
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-def log(msg):
-    print(msg, flush=True)
-
-# ===== ENV OKX =====
+# ================== ENV ==================
 API_KEY = os.getenv("OKX_API_KEY")
 API_SECRET = os.getenv("OKX_API_SECRET")
 PASSPHRASE = os.getenv("OKX_PASSPHRASE")
@@ -14,21 +17,10 @@ PASSPHRASE = os.getenv("OKX_PASSPHRASE")
 BASE_URL = "https://www.okx.com"
 
 SYMBOL = os.getenv("SYMBOL", "AXS-USDT")
-BUY_USDT = os.getenv("BUY_USDT", "16")
+BUY_USDT = float(os.getenv("BUY_USDT", "16"))
 
 MAX_STEPS = 10
 STATE_FILE = "state.json"
-
-# ===== STATE (ТОЛЬКО STEP) =====
-def load_state():
-    if not os.path.exists(STATE_FILE):
-        return {"step": 0}
-    with open(STATE_FILE, "r") as f:
-        return json.load(f)
-
-def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
@@ -39,11 +31,37 @@ LEVELS = {
     "ERROR": 40
 }
 
+# ================== LOG ==================
 def log(level, message):
     if LEVELS[level] >= LEVELS.get(LOG_LEVEL, 20):
         print(f"{level} | {message}", flush=True)
 
-# ===== SIGN =====
+# ================== STATE ==================
+DEFAULT_STATE = {
+    "step": 0,
+    "asset_qty": 0.0,
+    "usdt_spent": 0.0
+}
+
+def load_state():
+    if not os.path.exists(STATE_FILE):
+        save_state(DEFAULT_STATE.copy())
+        return DEFAULT_STATE.copy()
+
+    with open(STATE_FILE, "r") as f:
+        state = json.load(f)
+
+    # защита от старых / битых state.json
+    for k, v in DEFAULT_STATE.items():
+        state.setdefault(k, v)
+
+    return state
+
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+# ================== OKX SIGN ==================
 def okx_headers(method, path, body=""):
     ts = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
     msg = ts + method + path + body
@@ -59,24 +77,7 @@ def okx_headers(method, path, body=""):
         "Content-Type": "application/json"
     }
 
-# ===== GET REAL OKX BALANCE =====
-def get_spot_balance():
-    path = "/api/v5/account/balance"
-    headers = okx_headers("GET", path)
-    res = requests.get(BASE_URL + path, headers=headers).json()
-
-    if res.get("code") != "0":
-        return 0.0
-
-    base_ccy = SYMBOL.split("-")[0]
-
-    for item in res["data"][0]["details"]:
-        if item["ccy"] == base_ccy:
-            return float(item["availBal"])
-
-    return 0.0
-
-# ===== BUY =====
+# ================== BUY ==================
 def buy_spot():
     state = load_state()
 
@@ -93,7 +94,7 @@ def buy_spot():
         "side": "buy",
         "ordType": "market",
         "tgtCcy": "quote_ccy",
-        "sz": BUY_USDT
+        "sz": str(BUY_USDT)
     }
 
     body_json = json.dumps(body)
@@ -106,7 +107,6 @@ def buy_spot():
 
     fill = res["data"][0]
 
-    # ✅ БЕЗОПАСНОЕ ИЗВЛЕЧЕНИЕ QTY
     qty = float(
         fill.get("accFillSz")
         or fill.get("fillSz")
@@ -119,7 +119,7 @@ def buy_spot():
 
     state["step"] += 1
     state["asset_qty"] = round(state["asset_qty"] + qty, 8)
-    state["usdt_spent"] = round(state.get("usdt_spent", 0) + float(BUY_USDT), 2)
+    state["usdt_spent"] = round(state["usdt_spent"] + BUY_USDT, 2)
 
     save_state(state)
 
@@ -135,26 +135,26 @@ def buy_spot():
         "asset_total": state["asset_qty"]
     }
 
-# ===== SELL (1 / step от реального баланса) =====
+# ================== SELL ==================
 def sell_spot():
     state = load_state()
     step = state["step"]
     asset_qty = state["asset_qty"]
 
     if step <= 0:
-        log("⛔ SELL BLOCKED | step=0")
+        log("WARN", "⛔ SELL BLOCKED | step=0")
         return {"SELL": "SKIP", "reason": "step <= 0"}
 
     sell_percent = 1 / step
     sell_qty = round(asset_qty * sell_percent, 6)
 
     log(
-        f"🔴 SELL TRY | qty={sell_qty} | "
-        f"step={step} | asset_total={asset_qty}"
+        "INFO",
+        f"🔴 SELL TRY | qty={sell_qty} | step={step} | asset_total={asset_qty}"
     )
 
     if sell_qty <= 0:
-        log("⛔ SELL BLOCKED | qty too small")
+        log("WARN", "⛔ SELL BLOCKED | qty too small")
         return {"SELL": "SKIP", "reason": "qty too small"}
 
     path = "/api/v5/trade/order"
@@ -171,7 +171,7 @@ def sell_spot():
     res = requests.post(BASE_URL + path, headers=headers, data=body_json).json()
 
     if res.get("code") != "0":
-        log(f"❌ SELL ERROR | okx={res}")
+        log("ERROR", f"❌ SELL ERROR | okx={res}")
         return {"SELL": "ERROR", "okx": res}
 
     state["asset_qty"] = round(asset_qty - sell_qty, 8)
@@ -179,9 +179,8 @@ def sell_spot():
     save_state(state)
 
     log(
-        f"✅ SELL OK | sold={sell_qty} | "
-        f"steps NOW={state['step']} | "
-        f"asset_left={state['asset_qty']}"
+        "INFO",
+        f"✅ SELL OK | sold={sell_qty} | steps NOW={state['step']} | asset_left={state['asset_qty']}"
     )
 
     return {
@@ -191,10 +190,11 @@ def sell_spot():
         "asset_left": state["asset_qty"]
     }
 
-# ===== WEBHOOK =====
+# ================== WEBHOOK ==================
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    action = request.json.get("action")
+    data = request.json or {}
+    action = data.get("action")
 
     if action == "buy":
         return jsonify(buy_spot())
@@ -204,5 +204,6 @@ def webhook():
 
     return jsonify({"error": "unknown action"}), 400
 
+# ================== START ==================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
