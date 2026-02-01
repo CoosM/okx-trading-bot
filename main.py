@@ -16,7 +16,7 @@ BUY_USDT = os.getenv("BUY_USDT", "16")
 MAX_STEPS = 10
 STATE_FILE = "state.json"
 
-# ===== STATE (РўРћР›Р¬РљРћ STEP) =====
+# ===== STATE (ТОЛЬКО STEP) =====
 def load_state():
     if not os.path.exists(STATE_FILE):
         return {"step": 0}
@@ -92,7 +92,7 @@ def buy_spot():
         "step": state["step"]
     }
 
-# ===== SELL (1 / step РѕС‚ СЂРµР°Р»СЊРЅРѕРіРѕ Р±Р°Р»Р°РЅСЃР°) =====
+# ===== SELL (1 / step от реального баланса) =====
 def sell_spot():
     state = load_state()
     step = state["step"]
