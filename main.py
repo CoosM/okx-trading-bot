@@ -16,6 +16,9 @@ BUY_USDT = os.getenv("BUY_USDT", "16")
 MAX_STEPS = 10
 STATE_FILE = "state.json"
 
+def log(msg):
+    print(msg, flush=True)
+
 # ===== STATE (ТОЛЬКО STEP) =====
 def load_state():
     if not os.path.exists(STATE_FILE):
