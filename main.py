@@ -113,20 +113,23 @@ def buy_spot():
 def sell_spot():
     state = load_state()
     step = state["step"]
+    asset_qty = state["asset_qty"]
 
     if step <= 0:
+        log("⛔ SELL BLOCKED | step=0")
         return {"SELL": "SKIP", "reason": "step <= 0"}
 
-    balance = get_spot_balance()
-
-    if balance <= 0:
-        return {"SELL": "SKIP", "reason": "no balance on OKX"}
-
     sell_percent = 1 / step
-    sell_qty = round(balance * sell_percent, 6)
+    sell_qty = round(asset_qty * sell_percent, 6)
+
+    log(
+        f"🔴 SELL TRY | qty={sell_qty} | "
+        f"step={step} | asset_total={asset_qty}"
+    )
 
     if sell_qty <= 0:
-        return {"SELL": "SKIP", "reason": "sell_qty too small"}
+        log("⛔ SELL BLOCKED | qty too small")
+        return {"SELL": "SKIP", "reason": "qty too small"}
 
     path = "/api/v5/trade/order"
     body = {
@@ -142,16 +145,24 @@ def sell_spot():
     res = requests.post(BASE_URL + path, headers=headers, data=body_json).json()
 
     if res.get("code") != "0":
+        log(f"❌ SELL ERROR | okx={res}")
         return {"SELL": "ERROR", "okx": res}
 
+    state["asset_qty"] = round(asset_qty - sell_qty, 8)
     state["step"] -= 1
     save_state(state)
+
+    log(
+        f"✅ SELL OK | sold={sell_qty} | "
+        f"steps NOW={state['step']} | "
+        f"asset_left={state['asset_qty']}"
+    )
 
     return {
         "SELL": "OK",
         "sold_qty": sell_qty,
-        "percent": round(sell_percent * 100, 2),
-        "step_after": state["step"]
+        "step_after": state["step"],
+        "asset_left": state["asset_qty"]
     }
 
 # ===== WEBHOOK =====
