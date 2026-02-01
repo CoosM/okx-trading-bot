@@ -30,6 +30,19 @@ def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
 
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+LEVELS = {
+    "DEBUG": 10,
+    "INFO": 20,
+    "WARN": 30,
+    "ERROR": 40
+}
+
+def log(level, message):
+    if LEVELS[level] >= LEVELS.get(LOG_LEVEL, 20):
+        print(f"{level} | {message}", flush=True)
+
 # ===== SIGN =====
 def okx_headers(method, path, body=""):
     ts = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
