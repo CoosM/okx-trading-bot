@@ -108,16 +108,16 @@ def sell_spot():
     # --- BALANCE CHECK ---
     balance = get_spot_balance()
 
-if balance <= 0:
-    if step != 0:
-        log(f"♻️ AUTO RESET STEP | balance=0 | step was={step}")
-        state["step"] = 0
-        save_state(state)
-        return {
-            "SELL": "RESET",
-            "reason": "balance = 0",
-            "step_after": 0
-        }
+    if balance <= 0:
+        if step != 0:
+            log(f"♻️ AUTO RESET STEP | balance=0 | step was={step}")
+            state["step"] = 0
+            save_state(state)
+            return {
+                "SELL": "RESET",
+                "reason": "balance = 0",
+                "step_after": 0
+            }
         
         log(f"⛔ SELL BLOCKED | reason=no_balance | balance={balance} | step={step}")
         return {"SELL": "SKIP", "reason": "no balance", "step": step}
