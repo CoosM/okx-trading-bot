@@ -67,17 +67,23 @@ def okx_headers(method, path, body=""):
 # ================== ORDERS ==================
 def place_order(side, usdt_amount):
     path = "/api/v5/trade/order"
+
     body = {
         "instId": SYMBOL,
         "tdMode": TRADE_MODE,
         "side": side,
         "ordType": ORDER_TYPE,
-        "sz": str(usdt_amount)
     }
+
+    if side == "buy":
+        body["sz"] = str(usdt_amount)
+        body["tgtCcy"] = "quote_ccy"   # 🔥 КЛЮЧЕВО
+    else:
+        body["sz"] = str(usdt_amount)
+
     body_json = json.dumps(body)
     headers = okx_headers("POST", path, body_json)
-    r = requests.post(OKX_BASE + path, headers=headers, data=body_json)
-    return r.json()
+    return requests.post(OKX_BASE + path, headers=headers, data=body_json).json()
 
 # ================== BUY ==================
 def buy_spot():
