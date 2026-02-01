@@ -68,7 +68,10 @@ def buy_spot():
     state = load_state()
 
     if state["step"] >= MAX_STEPS:
+        log(f"⛔ BUY BLOCKED | step={state['step']} | max={MAX_STEPS}")
         return {"BUY": "SKIP", "reason": "max steps reached"}
+
+    log(f"🟢 BUY TRY | step={state['step']} | amount={BUY_USDT} USDT")
 
     path = "/api/v5/trade/order"
     body = {
@@ -85,14 +88,25 @@ def buy_spot():
     res = requests.post(BASE_URL + path, headers=headers, data=body_json).json()
 
     if res.get("code") != "0":
+        log(f"❌ BUY ERROR | okx={res}")
         return {"BUY": "ERROR", "okx": res}
 
+    qty = float(res["data"][0]["accFillSz"])
+
     state["step"] += 1
+    state["asset_qty"] = round(state["asset_qty"] + qty, 8)
     save_state(state)
+
+    log(
+        f"✅ BUY OK | filled={qty} | steps={state['step']} | "
+        f"asset_total={state['asset_qty']}"
+    )
 
     return {
         "BUY": "OK",
-        "step": state["step"]
+        "qty": qty,
+        "step": state["step"],
+        "asset_total": state["asset_qty"]
     }
 
 # ===== SELL (1 / step от реального баланса) =====
