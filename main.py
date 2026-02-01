@@ -68,10 +68,10 @@ def buy_spot():
     state = load_state()
 
     if state["step"] >= MAX_STEPS:
-        log(f"⛔ BUY BLOCKED | step={state['step']} | max={MAX_STEPS}")
-        return {"BUY": "SKIP", "reason": "max steps reached"}
+        log("WARN", "⛔ BUY BLOCKED | max steps reached")
+        return {"BUY": "SKIP", "reason": "max steps"}
 
-    log(f"🟢 BUY TRY | step={state['step']} | amount={BUY_USDT} USDT")
+    log("INFO", f"🟢 BUY TRY | step={state['step']} | amount={BUY_USDT} USDT")
 
     path = "/api/v5/trade/order"
     body = {
@@ -87,25 +87,38 @@ def buy_spot():
     headers = okx_headers("POST", path, body_json)
     res = requests.post(BASE_URL + path, headers=headers, data=body_json).json()
 
-    if res.get("code") != "0":
-        log(f"❌ BUY ERROR | okx={res}")
+    if res.get("code") != "0" or not res.get("data"):
+        log("ERROR", f"❌ BUY ERROR | okx={res}")
         return {"BUY": "ERROR", "okx": res}
 
-    qty = float(res["data"][0]["accFillSz"])
+    fill = res["data"][0]
+
+    # ✅ БЕЗОПАСНОЕ ИЗВЛЕЧЕНИЕ QTY
+    qty = float(
+        fill.get("accFillSz")
+        or fill.get("fillSz")
+        or 0
+    )
+
+    if qty <= 0:
+        log("WARN", f"⚠️ BUY NO FILL | response={fill}")
+        return {"BUY": "NO_FILL", "okx": fill}
 
     state["step"] += 1
     state["asset_qty"] = round(state["asset_qty"] + qty, 8)
+    state["usdt_spent"] = round(state.get("usdt_spent", 0) + float(BUY_USDT), 2)
+
     save_state(state)
 
     log(
-        f"✅ BUY OK | filled={qty} | steps={state['step']} | "
-        f"asset_total={state['asset_qty']}"
+        "INFO",
+        f"🟢 BUY OK | filled={qty} | steps={state['step']} | asset_total={state['asset_qty']}"
     )
 
     return {
         "BUY": "OK",
-        "qty": qty,
         "step": state["step"],
+        "qty": qty,
         "asset_total": state["asset_qty"]
     }
 
