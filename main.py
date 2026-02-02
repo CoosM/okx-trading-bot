@@ -1,4 +1,4 @@
-import time, hmac, base64, hashlib, json, requests, os
+balancecet time, hmac, base64, hashlib, json, requests, os
 from flask import Flask, request, jsonify
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -111,7 +111,7 @@ def sell_spot():
     # --- BALANCE CHECK ---
     balance = get_spot_balance()
 
-    if balance <= 0:
+    if balance <= 0 and step > 0:
         if step != 0:
             log(f"♻️ AUTO RESET STEP | balance=0 | step was={step}")
             state["step"] = 0
