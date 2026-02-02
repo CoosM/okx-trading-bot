@@ -109,30 +109,28 @@ def sell_spot():
         return {"SELL": "SKIP", "reason": "step <= 0", "step": step}
 
     # --- BALANCE CHECK ---
-balance = get_spot_balance()
+    balance = get_spot_balance()
 
-# 🛡️ ЗАЩИТА ОТ ЛОЖНОГО RESET (OKX delay)
-if balance <= 0 and step > 0:
-    log(
-        f"⚠️ SELL SKIP | balance=0 but step={step} | possible OKX delay"
-    )
-    return {
-        "SELL": "SKIP",
-        "reason": "balance delay",
-        "step": step
-    }
+    # 🛡️ ЗАЩИТА ОТ ЛОЖНОГО RESET (OKX delay)
+    if balance <= 0 and step > 0:
+        log(
+            f"⚠️ SELL SKIP | balance=0 but step={step} | possible OKX delay"
+        )
+        return {
+            "SELL": "SKIP",
+            "reason": "balance delay",
+            "step": step
+        }
 
-# если и баланса нет, и step = 0 → просто skip
-if balance <= 0 and step == 0:
-    log(
-        f"⛔ SELL BLOCKED | balance=0 & step=0"
-    )
-    return {
-        "SELL": "SKIP",
-        "reason": "no balance",
-        "step": step
-    }
-
+    # если и balance = 0, и step = 0
+    if balance <= 0 and step == 0:
+        log("⛔ SELL BLOCKED | balance=0 & step=0")
+        return {
+            "SELL": "SKIP",
+            "reason": "no balance",
+            "step": step
+        }
+        
     # --- QTY CALC ---
     sell_percent = 1 / step
     sell_qty = round(balance * sell_percent, 6)
