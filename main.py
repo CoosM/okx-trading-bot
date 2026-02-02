@@ -19,8 +19,7 @@ MAX_STEPS = 10
 STATE_FILE = "state.json"
 
 def log(msg):
-    kyiv = pytz.timezone("Europe/Kyiv")
-    now = datetime.now(kyiv).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{now}] {msg}", flush=True)
 
 # ===== STATE (РўРћР›Р¬РљРћ STEP) =====
