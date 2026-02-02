@@ -181,7 +181,15 @@ def sell_spot():
         "step_before": step,
         "step_after": state["step"]
     }
-    
+
+# ===== HEALTH CHECK (для UptimeRobot) =====
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({
+        "status": "ok",
+        "step": load_state().get("step", 0)
+    })
+
 # ===== WEBHOOK =====
 @app.route("/webhook", methods=["POST"])
 def webhook():
