@@ -16,22 +16,51 @@ SYMBOL = os.getenv("SYMBOL", "AXS-USDT")
 BUY_USDT = os.getenv("BUY_USDT", "16")
 
 MAX_STEPS = 10
-STATE_FILE = "state.json"
+
+# ===== GIST STATE =====
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GIST_ID = os.getenv("GIST_ID")
+STATE_FILE_NAME = "state.json"
+
+HEADERS_GIST = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3+json"
+}
 
 def log(msg):
     now = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{now}] {msg}", flush=True)
 
-# ===== STATE (РўРћР›Р¬РљРћ STEP) =====
+# ===== STATE (STEP ONLY, GIST) =====
 def load_state():
-    if not os.path.exists(STATE_FILE):
+    try:
+        url = f"https://api.github.com/gists/{GIST_ID}"
+        r = requests.get(url, headers=HEADERS_GIST, timeout=10)
+        r.raise_for_status()
+
+        files = r.json()["files"]
+        if STATE_FILE_NAME not in files:
+            return {"step": 0}
+
+        return json.loads(files[STATE_FILE_NAME]["content"])
+    except Exception as e:
+        log(f"⚠️ load_state error: {e}")
         return {"step": 0}
-    with open(STATE_FILE, "r") as f:
-        return json.load(f)
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    try:
+        url = f"https://api.github.com/gists/{GIST_ID}"
+        payload = {
+            "files": {
+                STATE_FILE_NAME: {
+                    "content": json.dumps(state)
+                }
+            }
+        }
+        r = requests.patch(url, headers=HEADERS_GIST, json=payload, timeout=10)
+        r.raise_for_status()
+    except Exception as e:
+        log(f"⚠️ save_state error: {e}")
 
 # ===== SIGN =====
 def okx_headers(method, path, body=""):
@@ -49,7 +78,7 @@ def okx_headers(method, path, body=""):
         "Content-Type": "application/json"
     }
 
-# ===== GET REAL OKX BALANCE =====
+# ===== GET BALANCE =====
 def get_spot_balance():
     path = "/api/v5/account/balance"
     headers = okx_headers("GET", path)
@@ -59,7 +88,6 @@ def get_spot_balance():
         return 0.0
 
     base_ccy = SYMBOL.split("-")[0]
-
     for item in res["data"][0]["details"]:
         if item["ccy"] == base_ccy:
             return float(item["availBal"])
@@ -93,64 +121,34 @@ def buy_spot():
     state["step"] += 1
     save_state(state)
 
-    return {
-        "BUY": "OK",
-        "step": state["step"]
-    }
+    log(f"🟢 BUY OK | step={state['step']}")
 
-# ===== SELL (1 / step РѕС‚ СЂРµР°Р»СЊРЅРѕРіРѕ Р±Р°Р»Р°РЅСЃР°) =====
+    return {"BUY": "OK", "step": state["step"]}
+
+# ===== SELL =====
 def sell_spot():
     state = load_state()
     step = state.get("step", 0)
 
-    # --- STEP CHECK ---
     if step <= 0:
-        log(f"⛔ SELL BLOCKED | reason=step<=0 | step={step}")
+        log(f"⛔ SELL BLOCKED | step={step}")
         return {"SELL": "SKIP", "reason": "step <= 0", "step": step}
 
-    # --- BALANCE CHECK ---
     balance = get_spot_balance()
 
-    # 🛡️ ЗАЩИТА ОТ ЛОЖНОГО RESET (OKX delay)
-    if balance <= 0 and step > 0:
-        log(
-            f"⚠️ SELL SKIP | balance=0 but step={step} | possible OKX delay"
-        )
-        return {
-            "SELL": "SKIP",
-            "reason": "balance delay",
-            "step": step
-        }
+    if balance <= 0:
+        log(f"⚠️ SELL SKIP | balance=0 | step={step}")
+        return {"SELL": "SKIP", "reason": "balance delay", "step": step}
 
-    # если и balance = 0, и step = 0
-    if balance <= 0 and step == 0:
-        log("⛔ SELL BLOCKED | balance=0 & step=0")
-        return {
-            "SELL": "SKIP",
-            "reason": "no balance",
-            "step": step
-        }
-        
-    # --- QTY CALC ---
     sell_percent = 1 / step
     sell_qty = round(balance * sell_percent, 6)
 
     if sell_qty <= 0:
-        log(
-            f"⛔ SELL BLOCKED | reason=qty_too_small | "
-            f"balance={balance} | step={step} | qty={sell_qty}"
-        )
-        return {
-            "SELL": "SKIP",
-            "reason": "qty too small",
-            "step": step,
-            "balance": balance
-        }
+        return {"SELL": "SKIP", "reason": "qty too small"}
 
-    # --- TRY SELL ---
     log(
         f"🔴 SELL TRY | balance={balance:.6f} | "
-        f"percent={sell_percent*100:.2f}% | qty={sell_qty} | step={step}"
+        f"{sell_percent*100:.2f}% | qty={sell_qty} | step={step}"
     )
 
     path = "/api/v5/trade/order"
@@ -166,29 +164,22 @@ def sell_spot():
     headers = okx_headers("POST", path, body_json)
     res = requests.post(BASE_URL + path, headers=headers, data=body_json).json()
 
-    # --- OKX ERROR ---
     if res.get("code") != "0":
-        log(f"❌ SELL ERROR | okx={res}")
         return {"SELL": "ERROR", "okx": res}
 
-    # --- SUCCESS ---
     state["step"] -= 1
     save_state(state)
 
-    log(
-        f"✅ SELL OK | sold={sell_qty} | "
-        f"step_before={step} | step_now={state['step']}"
-    )
+    log(f"✅ SELL OK | sold={sell_qty} | step_now={state['step']}")
 
     return {
         "SELL": "OK",
         "sold_qty": sell_qty,
         "percent": round(sell_percent * 100, 2),
-        "step_before": step,
         "step_after": state["step"]
     }
 
-# ===== HEALTH CHECK (для UptimeRobot) =====
+# ===== HEALTH =====
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({
