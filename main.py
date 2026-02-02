@@ -1,7 +1,7 @@
 import time, hmac, base64, hashlib, json, requests, os
 from flask import Flask, request, jsonify
 from datetime import datetime
-import pytz
+from zoneinfo import ZoneInfo
 
 app = Flask(__name__)
 
