@@ -1,4 +1,4 @@
-balancecet time, hmac, base64, hashlib, json, requests, os
+import time, hmac, base64, hashlib, json, requests, os
 from flask import Flask, request, jsonify
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -109,21 +109,29 @@ def sell_spot():
         return {"SELL": "SKIP", "reason": "step <= 0", "step": step}
 
     # --- BALANCE CHECK ---
-    balance = get_spot_balance()
+balance = get_spot_balance()
 
-    if balance <= 0 and step > 0:
-        if step != 0:
-            log(f"♻️ AUTO RESET STEP | balance=0 | step was={step}")
-            state["step"] = 0
-            save_state(state)
-            return {
-                "SELL": "RESET",
-                "reason": "balance = 0",
-                "step_after": 0
-            }
-        
-        log(f"⛔ SELL BLOCKED | reason=no_balance | balance={balance} | step={step}")
-        return {"SELL": "SKIP", "reason": "no balance", "step": step}
+# 🛡️ ЗАЩИТА ОТ ЛОЖНОГО RESET (OKX delay)
+if balance <= 0 and step > 0:
+    log(
+        f"⚠️ SELL SKIP | balance=0 but step={step} | possible OKX delay"
+    )
+    return {
+        "SELL": "SKIP",
+        "reason": "balance delay",
+        "step": step
+    }
+
+# если и баланса нет, и step = 0 → просто skip
+if balance <= 0 and step == 0:
+    log(
+        f"⛔ SELL BLOCKED | balance=0 & step=0"
+    )
+    return {
+        "SELL": "SKIP",
+        "reason": "no balance",
+        "step": step
+    }
 
     # --- QTY CALC ---
     sell_percent = 1 / step
