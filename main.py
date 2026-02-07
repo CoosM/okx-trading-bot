@@ -198,6 +198,14 @@ def webhook():
     if action == "sell":
         return jsonify(sell_spot())
 
+    if action == "set_step":
+    new_step = int(request.json.get("step", 0))
+    state = load_state()
+    state["step"] = new_step
+    save_state(state)
+    log(f"⚙️ MANUAL STEP SET → {new_step}")
+    return jsonify({"STEP_SET": new_step})
+    
     return jsonify({"error": "unknown action"}), 400
 
 if __name__ == "__main__":
