@@ -157,7 +157,7 @@ def sell_spot():
     sell_percent = 1 / step
     raw_qty = balance * sell_percent
 
-    sell_qty = float(f"{raw_qty:.4f}")
+    sell_qty = float(f"{raw_qty:.2f}")
 
     log(
         f"🔴 SELL TRY | balance={balance:.6f} | "
