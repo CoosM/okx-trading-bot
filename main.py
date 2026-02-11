@@ -12,8 +12,8 @@ PASSPHRASE = os.getenv("BITGET_PASSPHRASE")
 
 BASE_URL = "https://api.bitget.com"
 
-SYMBOL = os.getenv("SYMBOL", "AXSUSDT")  # Bitget формат!
-BUY_USDT = os.getenv("BUY_USDT", "16")
+SYMBOL = os.getenv("SYMBOL", "AXSUSDT")
+BUY_USDT = os.getenv("BUY_USDT", "14")
 
 MAX_STEPS = 10
 
@@ -49,7 +49,6 @@ def load_state():
         log(f"⚠️ load_state error: {e}")
         return {"step": 0}
 
-
 def save_state(state):
     try:
         url = f"https://api.github.com/gists/{GIST_ID}"
@@ -60,9 +59,7 @@ def save_state(state):
                 }
             }
         }
-
         requests.patch(url, headers=HEADERS_GIST, json=payload, timeout=10)
-
     except Exception as e:
         log(f"⚠️ save_state error: {e}")
 
@@ -91,6 +88,8 @@ def get_spot_balance():
     headers = bitget_headers("GET", path)
 
     res = requests.get(BASE_URL + path, headers=headers).json()
+
+    log(f"📦 BALANCE RESPONSE: {res}")
 
     if res.get("code") != "00000":
         return 0.0
@@ -127,6 +126,8 @@ def buy_spot():
 
     res = requests.post(BASE_URL + path, headers=headers, data=body_json).json()
 
+    log(f"📦 BUY RESPONSE: {res}")
+
     if res.get("code") != "00000":
         return {"BUY": "ERROR", "bitget": res}
 
@@ -144,15 +145,24 @@ def sell_spot():
     step = state.get("step", 0)
 
     if step <= 0:
-        return {"SELL": "SKIP", "reason": "step <= 0"}
+        log(f"⛔ SELL BLOCKED | step={step}")
+        return {"SELL": "SKIP", "reason": "step <= 0", "step": step}
 
     balance = get_spot_balance()
 
     if balance <= 0:
-        return {"SELL": "SKIP", "reason": "balance 0"}
+        log(f"⚠️ SELL SKIP | balance=0 | step={step}")
+        return {"SELL": "SKIP", "reason": "balance 0", "step": step}
 
     sell_percent = 1 / step
-    sell_qty = round(balance * sell_percent, 6)
+    raw_qty = balance * sell_percent
+
+    sell_qty = float(f"{raw_qty:.4f}")
+
+    log(
+        f"🔴 SELL TRY | balance={balance:.6f} | "
+        f"{sell_percent*100:.2f}% | raw={raw_qty} | qty={sell_qty} | step={step}"
+    )
 
     path = "/api/v2/spot/trade/place-order"
 
@@ -167,17 +177,29 @@ def sell_spot():
     body_json = json.dumps(body)
     headers = bitget_headers("POST", path, body_json)
 
-    res = requests.post(BASE_URL + path, headers=headers, data=body_json).json()
+    try:
+        res = requests.post(BASE_URL + path, headers=headers, data=body_json).json()
+    except Exception as e:
+        log(f"❌ REQUEST ERROR: {e}")
+        return {"SELL": "ERROR", "exception": str(e)}
+
+    log(f"📦 SELL RESPONSE: {res}")
 
     if res.get("code") != "00000":
+        log("❌ SELL FAILED — BITGET REJECTED ORDER")
         return {"SELL": "ERROR", "bitget": res}
 
     state["step"] -= 1
     save_state(state)
 
-    log(f"🔴 SELL OK | step_now={state['step']}")
+    log(f"✅ SELL OK | step_now={state['step']}")
 
-    return {"SELL": "OK", "step_after": state["step"]}
+    return {
+        "SELL": "OK",
+        "sold_qty": sell_qty,
+        "percent": round(sell_percent * 100, 2),
+        "step_after": state["step"]
+    }
 
 # ===== HEALTH =====
 
@@ -205,6 +227,7 @@ def webhook():
         state = load_state()
         state["step"] = new_step
         save_state(state)
+        log(f"⚙️ MANUAL STEP SET → {new_step}")
         return jsonify({"STEP_SET": new_step})
 
     return jsonify({"error": "unknown action"}), 400
