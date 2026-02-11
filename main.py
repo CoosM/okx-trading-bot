@@ -32,7 +32,7 @@ OKX_BASE = "https://www.okx.com"
 
 # ===== BITGET ENV =====
 BITGET_KEY = os.getenv("BITGET_API_KEY")
-BITGET_SECRET = os.getenv("BITGET_SECRET_KEY")
+BITGET_SECRET = os.getenv("BITGET_SECRET")
 BITGET_PASS = os.getenv("BITGET_PASSPHRASE")
 BITGET_BASE = "https://api.bitget.com"
 
