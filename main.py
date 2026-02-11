@@ -1,4 +1,4 @@
-import time, hmac, base64, hashlib, json, requests, os, math
+import time, hmac, base64, hashlib, json, requests, os
 from flask import Flask, request, jsonify
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -7,163 +7,264 @@ app = Flask(__name__)
 
 # ================= CONFIG =================
 
-SYMBOL = os.getenv("SYMBOL", "AXS")
-BUY_USDT = float(os.getenv("BUY_USDT", "14"))
 MAX_STEPS = 10
 
-USE_BITGET = os.getenv("USE_BITGET", "true").lower() == "true"
-USE_OKX = os.getenv("USE_OKX", "false").lower() == "true"
+# ===== OKX =====
+OKX_API_KEY = os.getenv("OKX_API_KEY")
+OKX_API_SECRET = os.getenv("OKX_API_SECRET")
+OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE")
+OKX_SYMBOL = os.getenv("OKX_SYMBOL", "AXS-USDT")
+OKX_BUY_USDT = os.getenv("OKX_BUY_USDT", "16")
+OKX_BASE_URL = "https://www.okx.com"
 
-# ================= GITHUB STATE =================
+# ===== BITGET =====
+BITGET_API_KEY = os.getenv("BITGET_API_KEY")
+BITGET_API_SECRET = os.getenv("BITGET_API_SECRET")
+BITGET_PASSPHRASE = os.getenv("BITGET_PASSPHRASE")
+BITGET_SYMBOL = os.getenv("BITGET_SYMBOL", "AXSUSDT")
+BITGET_BUY_USDT = os.getenv("BITGET_BUY_USDT", "16")
+BITGET_BASE_URL = "https://api.bitget.com"
 
+# ===== GITHUB =====
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GIST_ID = os.getenv("GIST_ID")
+STATE_FILE_NAME = "state.json"
 
 HEADERS_GIST = {
     "Authorization": f"token {GITHUB_TOKEN}",
     "Accept": "application/vnd.github.v3+json"
 }
 
-cached_state = None
+# ================= MEMORY PROTECTION =================
+
+cached_state = {"okx_step": 0, "bitget_step": 0}
+LAST_KNOWN_STATE = {"okx_step": 0, "bitget_step": 0}
+
+# ================= LOG =================
 
 def log(msg):
     now = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{now}] {msg}", flush=True)
 
+# ================= STATE =================
+
 def load_state():
-    global cached_state
+    global cached_state, LAST_KNOWN_STATE
+
     try:
         url = f"https://api.github.com/gists/{GIST_ID}"
         r = requests.get(url, headers=HEADERS_GIST, timeout=10)
         r.raise_for_status()
-        files = r.json()["files"]
 
-        if "state.json" not in files:
-            cached_state = {"bitget": 0, "okx": 0}
+        files = r.json()["files"]
+        if STATE_FILE_NAME not in files:
             return cached_state
 
-        cached_state = json.loads(files["state.json"]["content"])
-        return cached_state
-    except:
-        return {"bitget": 0, "okx": 0}
+        data = json.loads(files[STATE_FILE_NAME]["content"])
+
+        if "okx_step" in data and "bitget_step" in data:
+            cached_state = data
+            LAST_KNOWN_STATE = data
+            return cached_state
+
+        log("⚠️ Invalid state format. Using LAST_KNOWN_STATE")
+        return LAST_KNOWN_STATE
+
+    except Exception as e:
+        log(f"⚠️ load_state error: {e}")
+        return LAST_KNOWN_STATE
+
 
 def save_state(state):
-    global cached_state
-    cached_state = state
-    url = f"https://api.github.com/gists/{GIST_ID}"
-    payload = {
-        "files": {
-            "state.json": {
-                "content": json.dumps(state)
+    global cached_state, LAST_KNOWN_STATE
+
+    try:
+        url = f"https://api.github.com/gists/{GIST_ID}"
+        payload = {
+            "files": {
+                STATE_FILE_NAME: {
+                    "content": json.dumps(state)
+                }
             }
         }
+
+        r = requests.patch(url, headers=HEADERS_GIST, json=payload, timeout=10)
+        r.raise_for_status()
+
+        cached_state = state
+        LAST_KNOWN_STATE = state
+
+    except Exception as e:
+        log(f"⚠️ save_state error: {e}")
+        log("⚠️ Keeping LAST_KNOWN_STATE (no reset)")
+
+# ================= OKX =================
+
+def okx_headers(method, path, body=""):
+    ts = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
+    msg = ts + method + path + body
+    sign = base64.b64encode(
+        hmac.new(OKX_API_SECRET.encode(), msg.encode(), hashlib.sha256).digest()
+    ).decode()
+
+    return {
+        "OK-ACCESS-KEY": OKX_API_KEY,
+        "OK-ACCESS-SIGN": sign,
+        "OK-ACCESS-TIMESTAMP": ts,
+        "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE,
+        "Content-Type": "application/json"
     }
-    requests.patch(url, headers=HEADERS_GIST, json=payload, timeout=10)
+
+def okx_balance():
+    path = "/api/v5/account/balance"
+    headers = okx_headers("GET", path)
+    res = requests.get(OKX_BASE_URL + path, headers=headers).json()
+
+    if res.get("code") != "0":
+        return 0.0
+
+    base = OKX_SYMBOL.split("-")[0]
+    for d in res["data"][0]["details"]:
+        if d["ccy"] == base:
+            return float(d["availBal"])
+    return 0.0
+
+def okx_buy():
+    state = load_state()
+    step = state["okx_step"]
+
+    if step >= MAX_STEPS:
+        return {"OKX_BUY": "MAX_STEPS"}
+
+    path = "/api/v5/trade/order"
+    body = {
+        "instId": OKX_SYMBOL,
+        "tdMode": "cash",
+        "side": "buy",
+        "ordType": "market",
+        "tgtCcy": "quote_ccy",
+        "sz": OKX_BUY_USDT
+    }
+
+    body_json = json.dumps(body)
+    headers = okx_headers("POST", path, body_json)
+    res = requests.post(OKX_BASE_URL + path, headers=headers, data=body_json).json()
+
+    if res.get("code") != "0":
+        return {"OKX_BUY": "ERROR", "response": res}
+
+    state["okx_step"] += 1
+    save_state(state)
+    return {"OKX_BUY": "OK", "step": state["okx_step"]}
+
+def okx_sell():
+    state = load_state()
+    step = state["okx_step"]
+
+    if step <= 0:
+        return {"OKX_SELL": "NO_STEP"}
+
+    balance = okx_balance()
+    if balance <= 0:
+        return {"OKX_SELL": "NO_BALANCE"}
+
+    percent = 1 / step
+    qty = round(balance * percent, 6)
+
+    path = "/api/v5/trade/order"
+    body = {
+        "instId": OKX_SYMBOL,
+        "tdMode": "cash",
+        "side": "sell",
+        "ordType": "market",
+        "sz": str(qty)
+    }
+
+    body_json = json.dumps(body)
+    headers = okx_headers("POST", path, body_json)
+    res = requests.post(OKX_BASE_URL + path, headers=headers, data=body_json).json()
+
+    if res.get("code") != "0":
+        return {"OKX_SELL": "ERROR", "response": res}
+
+    state["okx_step"] -= 1
+    save_state(state)
+    return {"OKX_SELL": "OK", "step": state["okx_step"]}
 
 # ================= BITGET =================
-
-BG_KEY = os.getenv("BITGET_API_KEY")
-BG_SECRET = os.getenv("BITGET_SECRET")
-BG_PASSPHRASE = os.getenv("BITGET_PASSPHRASE")
-BG_URL = "https://api.bitget.com"
-
-symbol_cache = {}
 
 def bitget_headers(method, path, body=""):
     ts = str(int(time.time() * 1000))
     msg = ts + method + path + body
     sign = base64.b64encode(
-        hmac.new(BG_SECRET.encode(), msg.encode(), hashlib.sha256).digest()
+        hmac.new(BITGET_API_SECRET.encode(), msg.encode(), hashlib.sha256).digest()
     ).decode()
+
     return {
-        "ACCESS-KEY": BG_KEY,
+        "ACCESS-KEY": BITGET_API_KEY,
         "ACCESS-SIGN": sign,
         "ACCESS-TIMESTAMP": ts,
-        "ACCESS-PASSPHRASE": BG_PASSPHRASE,
+        "ACCESS-PASSPHRASE": BITGET_PASSPHRASE,
         "Content-Type": "application/json"
     }
 
-def bitget_symbol_precision():
-    pair = SYMBOL + "USDT"
+def bitget_buy():
+    state = load_state()
+    step = state["bitget_step"]
 
-    if pair in symbol_cache:
-        return symbol_cache[pair]
+    if step >= MAX_STEPS:
+        return {"BITGET_BUY": "MAX_STEPS"}
 
-    path = "/api/v2/spot/public/symbols"
-    res = requests.get(BG_URL + path, timeout=10).json()
-
-    if res.get("code") != "00000":
-        return 2
-
-    for s in res["data"]:
-        if s["symbol"] == pair:
-            precision = int(s["quantityPrecision"])
-            symbol_cache[pair] = precision
-            return precision
-
-    return 2
-
-def bitget_balance():
-    path = "/api/v2/spot/account/assets"
-    headers = bitget_headers("GET", path)
-    res = requests.get(BG_URL + path, headers=headers).json()
-
-    if res.get("code") != "00000":
-        return 0.0
-
-    for coin in res["data"]:
-        if coin["coin"] == SYMBOL:
-            return float(coin["available"])
-    return 0.0
-
-def bitget_buy(state):
-    if state["bitget"] >= MAX_STEPS:
-        return
-
-    path = "/api/v2/spot/trade/place-order"
+    path = "/api/spot/v1/trade/orders"
     body = {
-        "symbol": SYMBOL + "USDT",
+        "symbol": BITGET_SYMBOL,
         "side": "buy",
         "orderType": "market",
         "force": "normal",
-        "size": str(BUY_USDT)
+        "size": BITGET_BUY_USDT
     }
 
     body_json = json.dumps(body)
     headers = bitget_headers("POST", path, body_json)
-    res = requests.post(BG_URL + path, headers=headers, data=body_json).json()
+    res = requests.post(BITGET_BASE_URL + path, headers=headers, data=body_json).json()
 
-    log(f"BITGET BUY RESPONSE: {res}")
+    if res.get("code") != "00000":
+        return {"BITGET_BUY": "ERROR", "response": res}
 
-    if res.get("code") == "00000":
-        state["bitget"] += 1
-        log(f"🟢 BITGET BUY | step={state['bitget']}")
+    state["bitget_step"] += 1
+    save_state(state)
+    return {"BITGET_BUY": "OK", "step": state["bitget_step"]}
 
-def bitget_sell(state):
-    step = state["bitget"]
+def bitget_sell():
+    state = load_state()
+    step = state["bitget_step"]
+
     if step <= 0:
-        return
-
-    balance = bitget_balance()
-    if balance <= 0:
-        log("SELL SKIPPED: balance 0")
-        return
-
-    precision = bitget_symbol_precision()
+        return {"BITGET_SELL": "NO_STEP"}
 
     percent = 1 / step
-    qty_raw = balance * percent
 
-    factor = 10 ** precision
-    qty = math.floor(qty_raw * factor) / factor
+    path_balance = "/api/spot/v1/account/assets"
+    headers_balance = bitget_headers("GET", path_balance)
+    bal = requests.get(BITGET_BASE_URL + path_balance, headers=headers_balance).json()
 
-    if qty <= 0:
-        log("SELL SKIPPED: qty 0")
-        return
+    base = BITGET_SYMBOL.replace("USDT", "")
+    balance = 0.0
 
-    path = "/api/v2/spot/trade/place-order"
+    if bal.get("code") == "00000":
+        for a in bal["data"]:
+            if a["coinName"] == base:
+                balance = float(a["available"])
+                break
+
+    if balance <= 0:
+        return {"BITGET_SELL": "NO_BALANCE"}
+
+    qty = round(balance * percent, 6)
+
+    path = "/api/spot/v1/trade/orders"
     body = {
-        "symbol": SYMBOL + "USDT",
+        "symbol": BITGET_SYMBOL,
         "side": "sell",
         "orderType": "market",
         "force": "normal",
@@ -172,84 +273,51 @@ def bitget_sell(state):
 
     body_json = json.dumps(body)
     headers = bitget_headers("POST", path, body_json)
-    res = requests.post(BG_URL + path, headers=headers, data=body_json).json()
+    res = requests.post(BITGET_BASE_URL + path, headers=headers, data=body_json).json()
 
-    log(f"BITGET SELL RESPONSE: {res}")
+    if res.get("code") != "00000":
+        return {"BITGET_SELL": "ERROR", "response": res}
 
-    if res.get("code") == "00000":
-        state["bitget"] -= 1
-        log(f"🔴 BITGET SELL | step={state['bitget']}")
-
-# ================= OKX =================
-
-OKX_KEY = os.getenv("OKX_API_KEY")
-OKX_SECRET = os.getenv("OKX_API_SECRET")
-OKX_PASS = os.getenv("OKX_PASSPHRASE")
-OKX_URL = "https://www.okx.com"
-
-def okx_headers(method, path, body=""):
-    ts = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
-    msg = ts + method + path + body
-    sign = base64.b64encode(
-        hmac.new(OKX_SECRET.encode(), msg.encode(), hashlib.sha256).digest()
-    ).decode()
-    return {
-        "OK-ACCESS-KEY": OKX_KEY,
-        "OK-ACCESS-SIGN": sign,
-        "OK-ACCESS-TIMESTAMP": ts,
-        "OK-ACCESS-PASSPHRASE": OKX_PASS,
-        "Content-Type": "application/json"
-    }
-
-def okx_buy(state):
-    if state["okx"] >= MAX_STEPS:
-        return
-
-    path = "/api/v5/trade/order"
-    body = {
-        "instId": SYMBOL + "-USDT",
-        "tdMode": "cash",
-        "side": "buy",
-        "ordType": "market",
-        "tgtCcy": "quote_ccy",
-        "sz": str(BUY_USDT)
-    }
-
-    body_json = json.dumps(body)
-    headers = okx_headers("POST", path, body_json)
-    res = requests.post(OKX_URL + path, headers=headers, data=body_json).json()
-
-    log(f"OKX BUY RESPONSE: {res}")
-
-    if res.get("code") == "0":
-        state["okx"] += 1
-        log(f"🟢 OKX BUY | step={state['okx']}")
+    state["bitget_step"] -= 1
+    save_state(state)
+    return {"BITGET_SELL": "OK", "step": state["bitget_step"]}
 
 # ================= ROUTES =================
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "cached_state": cached_state})
+    return jsonify({
+        "status": "ok",
+        "cached_state": cached_state
+    })
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    action = request.json.get("action", "").lower()
-    state = load_state()
+    data = request.json
+    action = data.get("action")
+    exchange = data.get("exchange")
 
     if action == "buy":
-        if USE_BITGET:
-            bitget_buy(state)
-        if USE_OKX:
-            okx_buy(state)
+        return jsonify(okx_buy() if exchange == "okx" else bitget_buy())
 
     if action == "sell":
-        if USE_BITGET:
-            bitget_sell(state)
+        return jsonify(okx_sell() if exchange == "okx" else bitget_sell())
 
-    save_state(state)
-    return jsonify(state)
+    if action == "set_step":
+        state = load_state()
+        step = int(data.get("step", 0))
 
-# ================= RUN =================
+        if exchange == "okx":
+            state["okx_step"] = step
+        else:
+            state["bitget_step"] = step
+
+        save_state(state)
+        return jsonify({"STEP_SET": step})
+
+    return jsonify({"error": "unknown action"}), 400
+
+# ================= START =================
 
 if __name__ == "__main__":
     load_state()
