@@ -5,6 +5,10 @@ from zoneinfo import ZoneInfo
 
 app = Flask(__name__)
 
+# ===== EXCHANGE =====
+ENABLE_OKX = os.getenv("ENABLE_OKX", "true").lower() == "true"
+ENABLE_BITGET = os.getenv("ENABLE_BITGET", "true").lower() == "true"
+
 # ================= CONFIG =================
 
 MAX_STEPS = 10
