@@ -144,6 +144,16 @@ def buy_bitget():
     if state["step"] >= MAX_STEPS:
         return
 
+    # 1️⃣ Получаем цену
+    ticker = requests.get(
+        f"{BITGET_BASE}/api/v2/spot/market/tickers?symbol={SYMBOL_BITGET}"
+    ).json()
+
+    price = float(ticker["data"][0]["lastPr"])
+
+    # 2️⃣ Считаем количество монет
+    qty = round(float(BUY_USDT) / price, 6)
+
     path = "/api/v2/spot/trade/place-order"
 
     body = {
@@ -151,7 +161,7 @@ def buy_bitget():
         "side": "buy",
         "orderType": "market",
         "force": "gtc",
-        "quoteQty": str(BUY_USDT)
+        "size": str(qty)
     }
 
     body_json = json.dumps(body)
