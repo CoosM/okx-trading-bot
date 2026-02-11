@@ -24,7 +24,7 @@ HEADERS_GIST = {
     "Accept": "application/vnd.github.v3+json"
 }
 
-cached_state = None  # для health, чтобы не долбить GitHub
+cached_state = None
 
 def log(msg):
     now = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%Y-%m-%d %H:%M:%S")
@@ -67,6 +67,8 @@ BG_SECRET = os.getenv("BITGET_SECRET")
 BG_PASSPHRASE = os.getenv("BITGET_PASSPHRASE")
 BG_URL = "https://api.bitget.com"
 
+symbol_cache = {}
+
 def bitget_headers(method, path, body=""):
     ts = str(int(time.time() * 1000))
     msg = ts + method + path + body
@@ -80,6 +82,27 @@ def bitget_headers(method, path, body=""):
         "ACCESS-PASSPHRASE": BG_PASSPHRASE,
         "Content-Type": "application/json"
     }
+
+def bitget_symbol_info():
+    pair = SYMBOL + "USDT"
+
+    if pair in symbol_cache:
+        return symbol_cache[pair]
+
+    path = "/api/v2/spot/public/symbols"
+    res = requests.get(BG_URL + path, timeout=10).json()
+
+    if res.get("code") != "00000":
+        return 2, 0.0
+
+    for s in res["data"]:
+        if s["symbol"] == pair:
+            precision = int(s["quantityPrecision"])
+            min_size = float(s["minTradeAmount"])
+            symbol_cache[pair] = (precision, min_size)
+            return precision, min_size
+
+    return 2, 0.0
 
 def bitget_balance():
     path = "/api/v2/spot/account/assets"
@@ -111,6 +134,8 @@ def bitget_buy(state):
     headers = bitget_headers("POST", path, body_json)
     res = requests.post(BG_URL + path, headers=headers, data=body_json).json()
 
+    log(f"BITGET BUY RESPONSE: {res}")
+
     if res.get("code") == "00000":
         state["bitget"] += 1
         log(f"🟢 BITGET BUY | step={state['bitget']}")
@@ -122,9 +147,17 @@ def bitget_sell(state):
 
     balance = bitget_balance()
     if balance <= 0:
+        log("SELL SKIPPED: balance 0")
         return
 
+    precision, min_size = bitget_symbol_info()
+
     qty = balance / step
+    qty = float(f"{qty:.{precision}f}")
+
+    if qty < min_size:
+        log(f"SELL SKIPPED: qty {qty} < min_size {min_size}")
+        return
 
     path = "/api/v2/spot/trade/place-order"
     body = {
@@ -184,6 +217,8 @@ def okx_buy(state):
     headers = okx_headers("POST", path, body_json)
     res = requests.post(OKX_URL + path, headers=headers, data=body_json).json()
 
+    log(f"OKX BUY RESPONSE: {res}")
+
     if res.get("code") == "0":
         state["okx"] += 1
         log(f"🟢 OKX BUY | step={state['okx']}")
@@ -194,14 +229,13 @@ def okx_buy(state):
 def health():
     return jsonify({
         "status": "ok",
-        "cached_state": cached_state  # НЕ дергаем GitHub
+        "cached_state": cached_state
     })
 
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    global cached_state
     action = request.json.get("action", "").lower()
     state = load_state()
 
@@ -214,7 +248,6 @@ def webhook():
     if action == "sell":
         if USE_BITGET:
             bitget_sell(state)
-        # okx_sell можно добавить аналогично
 
     save_state(state)
     return jsonify(state)
