@@ -6,28 +6,30 @@ from zoneinfo import ZoneInfo
 app = Flask(__name__)
 
 # ===== CONFIG =====
-EXCHANGE = os.getenv("EXCHANGE", "OKX").upper()
-BASE_SYMBOL = os.getenv("BASE_SYMBOL", "BTC").upper()
+EXCHANGE = os.getenv("EXCHANGE", "okx").lower()
+BASE_SYMBOL = os.getenv("BASE_SYMBOL", "AXS").upper()
 BUY_USDT = os.getenv("BUY_USDT", "16")
 MAX_STEPS = int(os.getenv("MAX_STEPS", "10"))
 
-# ===== SYMBOL AUTO FORMAT =====
-if EXCHANGE == "OKX":
+# ===== SYMBOL AUTO =====
+if EXCHANGE == "okx":
     SYMBOL = f"{BASE_SYMBOL}-USDT"
-elif EXCHANGE == "BITGET":
+elif EXCHANGE == "bitget":
     SYMBOL = f"{BASE_SYMBOL}USDT"
 else:
     raise Exception("Unsupported EXCHANGE")
 
-# ===== OKX ENV =====
+# ===== OKX =====
 OKX_API_KEY = os.getenv("OKX_API_KEY")
 OKX_API_SECRET = os.getenv("OKX_API_SECRET")
-OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE")
+OKX_API_PASSPHRASE = os.getenv("OKX_API_PASSPHRASE")
+OKX_BASE_URL = "https://www.okx.com"
 
-# ===== BITGET ENV =====
+# ===== BITGET =====
 BITGET_API_KEY = os.getenv("BITGET_API_KEY")
 BITGET_API_SECRET = os.getenv("BITGET_API_SECRET")
-BITGET_PASSPHRASE = os.getenv("BITGET_PASSPHRASE")
+BITGET_API_PASSPHRASE = os.getenv("BITGET_API_PASSPHRASE")
+BITGET_BASE_URL = "https://api.bitget.com"
 
 # ===== GIST =====
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
@@ -60,7 +62,8 @@ def load_state():
         state = json.loads(files[STATE_FILE_NAME]["content"])
         cached_state = state
         return state
-    except:
+    except Exception as e:
+        log(f"load_state fallback: {e}")
         return cached_state
 
 def save_state(state):
@@ -79,7 +82,7 @@ def save_state(state):
     except Exception as e:
         log(f"save_state error: {e}")
 
-# ===== OKX SIGN =====
+# ===== SIGN =====
 def okx_headers(method, path, body=""):
     ts = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
     msg = ts + method + path + body
@@ -91,11 +94,10 @@ def okx_headers(method, path, body=""):
         "OK-ACCESS-KEY": OKX_API_KEY,
         "OK-ACCESS-SIGN": sign,
         "OK-ACCESS-TIMESTAMP": ts,
-        "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE,
+        "OK-ACCESS-PASSPHRASE": OKX_API_PASSPHRASE,
         "Content-Type": "application/json"
     }
 
-# ===== BITGET SIGN =====
 def bitget_headers(method, path, body=""):
     ts = str(int(time.time() * 1000))
     message = ts + method + path + body
@@ -107,7 +109,7 @@ def bitget_headers(method, path, body=""):
         "ACCESS-KEY": BITGET_API_KEY,
         "ACCESS-SIGN": sign,
         "ACCESS-TIMESTAMP": ts,
-        "ACCESS-PASSPHRASE": BITGET_PASSPHRASE,
+        "ACCESS-PASSPHRASE": BITGET_API_PASSPHRASE,
         "Content-Type": "application/json"
     }
 
@@ -118,7 +120,7 @@ def buy_spot():
     if state["step"] >= MAX_STEPS:
         return {"BUY": "SKIP"}
 
-    if EXCHANGE == "OKX":
+    if EXCHANGE == "okx":
         path = "/api/v5/trade/order"
         body = {
             "instId": SYMBOL,
@@ -128,47 +130,86 @@ def buy_spot():
             "tgtCcy": "quote_ccy",
             "sz": BUY_USDT
         }
-        body_json = json.dumps(body)
-        headers = okx_headers("POST", path, body_json)
-        res = requests.post("https://www.okx.com"+path,
-                            headers=headers, data=body_json).json()
+        res = requests.post(
+            OKX_BASE_URL + path,
+            headers=okx_headers("POST", path, json.dumps(body)),
+            json=body
+        ).json()
 
         if res.get("code") != "0":
             return {"BUY": "ERROR", "info": res}
 
-    else:  # BITGET
+    elif EXCHANGE == "bitget":
         path = "/api/spot/v1/trade/orders"
         body = {
             "symbol": SYMBOL,
             "side": "buy",
-            "type": "market",
+            "orderType": "market",
             "force": "normal",
             "size": BUY_USDT
         }
-        body_json = json.dumps(body)
-        headers = bitget_headers("POST", path, body_json)
-        res = requests.post("https://api.bitget.com"+path,
-                            headers=headers, data=body_json).json()
+        res = requests.post(
+            BITGET_BASE_URL + path,
+            headers=bitget_headers("POST", path, json.dumps(body)),
+            json=body
+        ).json()
 
         if res.get("code") != "00000":
             return {"BUY": "ERROR", "info": res}
 
     state["step"] += 1
     save_state(state)
-    log(f"BUY OK | {EXCHANGE} | step={state['step']}")
+
+    log(f"BUY OK | {EXCHANGE.upper()} | step={state['step']}")
     return {"BUY": "OK", "step": state["step"]}
 
 # ===== SELL =====
 def sell_spot():
     state = load_state()
+
     if state["step"] <= 0:
         return {"SELL": "SKIP"}
 
-    # здесь можно добавить баланс Bitget/OKX при желании
+    if EXCHANGE == "okx":
+        path = "/api/v5/trade/order"
+        body = {
+            "instId": SYMBOL,
+            "tdMode": "cash",
+            "side": "sell",
+            "ordType": "market",
+            "sz": "ALL"
+        }
+        res = requests.post(
+            OKX_BASE_URL + path,
+            headers=okx_headers("POST", path, json.dumps(body)),
+            json=body
+        ).json()
+
+        if res.get("code") != "0":
+            return {"SELL": "ERROR", "info": res}
+
+    elif EXCHANGE == "bitget":
+        path = "/api/spot/v1/trade/orders"
+        body = {
+            "symbol": SYMBOL,
+            "side": "sell",
+            "orderType": "market",
+            "force": "normal",
+            "size": "ALL"
+        }
+        res = requests.post(
+            BITGET_BASE_URL + path,
+            headers=bitget_headers("POST", path, json.dumps(body)),
+            json=body
+        ).json()
+
+        if res.get("code") != "00000":
+            return {"SELL": "ERROR", "info": res}
+
     state["step"] -= 1
     save_state(state)
 
-    log(f"SELL OK | {EXCHANGE} | step={state['step']}")
+    log(f"SELL OK | {EXCHANGE.upper()} | step={state['step']}")
     return {"SELL": "OK", "step": state["step"]}
 
 # ===== HEALTH =====
