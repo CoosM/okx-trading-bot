@@ -124,7 +124,7 @@ def bitget_sell(state):
     if balance <= 0:
         return
 
-    qty = round(balance * (1 / step), 2)
+    qty = balance / step
 
     path = "/api/v2/spot/trade/place-order"
     body = {
@@ -138,6 +138,8 @@ def bitget_sell(state):
     body_json = json.dumps(body)
     headers = bitget_headers("POST", path, body_json)
     res = requests.post(BG_URL + path, headers=headers, data=body_json).json()
+
+    log(f"BITGET SELL RESPONSE: {res}")
 
     if res.get("code") == "00000":
         state["bitget"] -= 1
