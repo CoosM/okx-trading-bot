@@ -219,7 +219,8 @@ def bitget_buy():
     if step >= MAX_STEPS:
         return {"BITGET_BUY": "MAX_STEPS"}
 
-    path = "/api/spot/v1/trade/orders"
+    path = "/api/v2/spot/trade/place-order"
+    
     body = {
         "symbol": BITGET_SYMBOL,
         "side": "buy",
@@ -250,10 +251,12 @@ def bitget_sell():
 
     percent = 1 / step
 
-    path_balance = "/api/spot/v1/account/assets"
+    path_balance = "GET /api/v2/spot/account/assets"
     headers_balance = bitget_headers("GET", path_balance)
     bal = requests.get(BITGET_BASE_URL + path_balance, headers=headers_balance).json()
 
+    log(f"🔵 BITGET BALANCE RESPONSE: {bal}")
+    
     base = BITGET_SYMBOL.replace("USDT", "")
     balance = 0.0
 
