@@ -232,6 +232,8 @@ def bitget_buy():
     headers = bitget_headers("POST", path, body_json)
     res = requests.post(BITGET_BASE_URL + path, headers=headers, data=body_json).json()
 
+    log(f"🟢 BITGET BUY RESPONSE: {res}")
+
     if res.get("code") != "00000":
         return {"BITGET_BUY": "ERROR", "response": res}
 
