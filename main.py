@@ -101,6 +101,22 @@ BITGET_SYMBOL = os.getenv("BITGET_SYMBOL", "AXSUSDT")
 BITGET_BUY_USDT = os.getenv("BITGET_BUY_USDT", "14")
 BITGET_BASE = "https://api.bitget.com"
 
+def bitget_get_quantity_scale():
+    path = f"/api/v2/spot/public/symbols?symbol={BITGET_SYMBOL}"
+    res = requests.get(BITGET_BASE + path).json()
+
+    if res.get("code") != "00000":
+        log(f"⚠️ scale fetch error: {res}")
+        return 6  # fallback
+
+    return int(res["data"][0]["quantityScale"])
+    
+
+def adjust_size_to_scale(size, scale):
+    factor = 10 ** scale
+    return math.floor(size * factor) / factor
+    
+
 def bitget_headers(method, path, body=""):
     ts = str(int(time.time() * 1000))
     msg = ts + method.upper() + path + body
@@ -175,8 +191,7 @@ def bitget_sell():
     sell_percent = 1 / step
     raw_qty = balance * sell_percent
 
-    quantity_scale = 2
-    
+    quantity_scale = bitget_get_quantity_scale()
     sell_qty = adjust_size_to_scale(raw_qty, quantity_scale)
 
     path = "/api/v2/spot/trade/place-order"
