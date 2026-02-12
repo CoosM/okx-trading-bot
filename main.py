@@ -31,8 +31,8 @@ HEADERS_GIST = {
 }
 
 def log(msg):
-now = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%Y-%m-%d %H:%M:%S")
-print(f"[{now}] {msg}", flush=True)
+    now = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{now}] {msg}", flush=True)
 
 #=========================================================
 #================== STATE FUNCTIONS ======================
@@ -349,16 +349,17 @@ return jsonify({"error": "unknown action"}), 400
 
 @app.route("/health")
 def health():
-global cached_state
-if cached_state is None:
-cached_state = LAST_KNOWN_STATE
+    global cached_state
 
-return jsonify({  
-    "status": "ok",  
-    "state": cached_state,  
-    "bitget_enabled": USE_BITGET,  
-    "okx_enabled": USE_OKX  
-})
+    if cached_state is None:
+        cached_state = LAST_KNOWN_STATE
+
+    return jsonify({
+        "status": "ok",
+        "state": cached_state,
+        "bitget_enabled": USE_BITGET,
+        "okx_enabled": USE_OKX
+    })
 
 if __name__ == "__main__":
 app.run(host="0.0.0.0", port=5000)
