@@ -1,4 +1,4 @@
-import time, hmac, base64, hashlib, json, requests, os
+import math, time, hmac, base64, hashlib, json, requests, os
 from flask import Flask, request, jsonify
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -173,7 +173,11 @@ def bitget_sell():
         return {"status": "skip", "reason": "balance 0"}
 
     sell_percent = 1 / step
-    sell_qty = round(balance * sell_percent, 6)
+    raw_qty = balance * sell_percent
+
+    quantity_scale = 2
+    
+    sell_qty = adjust_size_to_scale(raw_qty, quantity_scale)
 
     path = "/api/v2/spot/trade/place-order"
     body = {
