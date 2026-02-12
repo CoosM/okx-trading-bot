@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-app = Flask(name)
+app = Flask(__name__)
 
 =========================================================
 
@@ -372,5 +372,5 @@ return jsonify({
     "okx_enabled": USE_OKX  
 })
 
-if name == "main":
+if __name__ == "__main__":
 app.run(host="0.0.0.0", port=5000)
