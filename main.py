@@ -322,6 +322,8 @@ def okx_buy():
     state["okx"] += 1
     save_state(state)
 
+    log(f"🟢 OKX BUY OK | step_now={state['okx']}")
+
     return {"status": "buy ok", "step": state["okx"]}
 
 
@@ -330,14 +332,28 @@ def okx_sell():
     step = state["okx"]
 
     if step <= 0:
-        return {"status": "skip", "reason": "step <= 0"}
+        log(f"⛔ OKX SELL BLOCKED | step={step}")
+        return {"status": "skip", "reason": "step <= 0", "step": step}
 
     balance = okx_get_balance()
     if balance <= 0:
-        return {"status": "skip", "reason": "balance 0"}
+        log(f"⚠️ OKX SELL SKIP | balance=0 | step={step}")
+        return {"status": "skip", "reason": "balance 0", "step": step}
 
     sell_percent = 1 / step
     sell_qty = round(balance * sell_percent, 6)
+
+    if sell_qty <= 0:
+        log(
+            f"⚠️ OKX SELL SKIP | qty too small | "
+            f"balance={balance:.6f} | step={step}"
+        )
+        return {"status": "skip", "reason": "qty too small", "step": step}
+
+    log(
+        f"🔴 OKX SELL TRY | balance={balance:.6f} | "
+        f"{sell_percent*100:.2f}% | qty={sell_qty} | step={step}"
+    )
 
     path = "/api/v5/trade/order"
     body = {
@@ -360,7 +376,14 @@ def okx_sell():
     state["okx"] -= 1
     save_state(state)
 
-    return {"status": "sell ok", "step": state["okx"]}
+    log(f"✅ OKX SELL OK | sold={sell_qty} | step_now={state['okx']}")
+
+    return {
+        "status": "sell ok",
+        "sold_qty": sell_qty,
+        "percent": round(sell_percent * 100, 2),
+        "step_after": state["okx"]
+    }
 
 # =========================================================
 # ======================== WEBHOOK ========================
