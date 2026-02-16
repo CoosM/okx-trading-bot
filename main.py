@@ -159,6 +159,8 @@ def bitget_buy():
         log(f"⛔ BITGET BUY SKIP | reason=max steps reached | step={step}")
         return {"status": "max steps reached", "step": step}
 
+    log(f"🟢 BITGET BUY TRY | step_before={step} | sz={BITGET_BUY_USDT} | symbol={BITGET_SYMBOL}")
+
     path = "/api/v2/spot/trade/place-order"
     body = {
         "symbol": BITGET_SYMBOL,
@@ -173,16 +175,15 @@ def bitget_buy():
     headers = bitget_headers("POST", path, body_json)
 
     res = requests.post(BITGET_BASE + path, headers=headers, data=body_json).json()
-    log(f"📦 BITGET BUY RES | step_before={step} | resp={res}")
 
     if res.get("code") != "00000":
+        log(f"⚠️ BITGET BUY ERROR | step_before={step} | resp={res}")
         return {"status": "error", "error": res}
 
     state["bitget"] += 1
     save_state(state)
 
     log(f"🟢 BITGET BUY OK | step_now={state['bitget']}")
-
     return {"status": "buy ok", "step": state["bitget"]}
 
 
@@ -231,16 +232,15 @@ def bitget_sell():
     headers = bitget_headers("POST", path, body_json)
 
     res = requests.post(BITGET_BASE + path, headers=headers, data=body_json).json()
-    log(f"📦 BITGET SELL RES | step_before={step} | qty={sell_qty} | resp={res}")
 
     if res.get("code") != "00000":
+        log(f"⚠️ BITGET SELL ERROR | step_before={step} | qty={sell_qty} | resp={res}")
         return {"status": "error", "error": res}
 
     state["bitget"] -= 1
     save_state(state)
 
     log(f"✅ BITGET SELL OK | sold={sell_qty} | step_now={state['bitget']}")
-
     return {
         "status": "sell ok",
         "sold_qty": sell_qty,
@@ -298,7 +298,10 @@ def okx_buy():
     step = state["okx"]
 
     if step >= MAX_STEPS:
-        return {"status": "max steps reached"}
+        log(f"⛔ OKX BUY SKIP | reason=max steps reached | step={step}")
+        return {"status": "max steps reached", "step": step}
+
+    log(f"🟢 OKX BUY TRY | step_before={step} | sz={OKX_BUY_USDT} | inst={OKX_SYMBOL}")
 
     path = "/api/v5/trade/order"
     body = {
@@ -314,16 +317,15 @@ def okx_buy():
     headers = okx_headers("POST", path, body_json)
 
     res = requests.post(OKX_BASE + path, headers=headers, data=body_json).json()
-    log(f"📦 OKX BUY: {res}")
 
     if res.get("code") != "0":
-        return {"error": res}
+        log(f"⚠️ OKX BUY ERROR | step_before={step} | resp={res}")
+        return {"status": "error", "error": res}
 
     state["okx"] += 1
     save_state(state)
 
     log(f"🟢 OKX BUY OK | step_now={state['okx']}")
-
     return {"status": "buy ok", "step": state["okx"]}
 
 
@@ -368,22 +370,22 @@ def okx_sell():
     headers = okx_headers("POST", path, body_json)
 
     res = requests.post(OKX_BASE + path, headers=headers, data=body_json).json()
-    log(f"📦 OKX SELL: {res}")
 
     if res.get("code") != "0":
-        return {"error": res}
+        log(f"⚠️ OKX SELL ERROR | step_before={step} | qty={sell_qty} | resp={res}")
+        return {"status": "error", "error": res}
 
     state["okx"] -= 1
     save_state(state)
 
     log(f"✅ OKX SELL OK | sold={sell_qty} | step_now={state['okx']}")
-
     return {
         "status": "sell ok",
         "sold_qty": sell_qty,
         "percent": round(sell_percent * 100, 2),
         "step_after": state["okx"]
     }
+
 
 # =========================================================
 # ======================== WEBHOOK ========================
