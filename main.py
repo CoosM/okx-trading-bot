@@ -156,7 +156,8 @@ def bitget_buy():
     step = state["bitget"]
 
     if step >= MAX_STEPS:
-        return {"status": "max steps reached"}
+        log(f"⛔ BITGET BUY SKIP | reason=max steps reached | step={step}")
+        return {"status": "max steps reached", "step": step}
 
     path = "/api/v2/spot/trade/place-order"
     body = {
@@ -172,13 +173,15 @@ def bitget_buy():
     headers = bitget_headers("POST", path, body_json)
 
     res = requests.post(BITGET_BASE + path, headers=headers, data=body_json).json()
-    log(f"📦 BITGET BUY: {res}")
+    log(f"📦 BITGET BUY RES | step_before={step} | resp={res}")
 
     if res.get("code") != "00000":
-        return {"error": res}
+        return {"status": "error", "error": res}
 
     state["bitget"] += 1
     save_state(state)
+
+    log(f"🟢 BITGET BUY OK | step_now={state['bitget']}")
 
     return {"status": "buy ok", "step": state["bitget"]}
 
@@ -188,17 +191,32 @@ def bitget_sell():
     step = state["bitget"]
 
     if step <= 0:
-        return {"status": "skip", "reason": "step <= 0"}
+        log(f"⛔ BITGET SELL BLOCKED | step={step}")
+        return {"status": "skip", "reason": "step <= 0", "step": step}
 
     balance = bitget_get_balance()
     if balance <= 0:
-        return {"status": "skip", "reason": "balance 0"}
+        log(f"⚠️ BITGET SELL SKIP | balance=0 | step={step}")
+        return {"status": "skip", "reason": "balance 0", "step": step}
 
     sell_percent = 1 / step
     raw_qty = balance * sell_percent
 
     quantity_scale = bitget_get_quantity_scale()
     sell_qty = adjust_size_to_scale(raw_qty, quantity_scale)
+
+    if sell_qty <= 0:
+        log(
+            f"⚠️ BITGET SELL SKIP | qty too small | "
+            f"balance={balance:.6f} | raw={raw_qty:.6f} | step={step} | scale={quantity_scale}"
+        )
+        return {"status": "skip", "reason": "qty too small", "step": step}
+
+    log(
+        f"🔴 BITGET SELL TRY | balance={balance:.6f} | "
+        f"{sell_percent*100:.2f}% | raw={raw_qty:.6f} | qty={sell_qty} | "
+        f"step={step} | scale={quantity_scale}"
+    )
 
     path = "/api/v2/spot/trade/place-order"
     body = {
@@ -213,15 +231,23 @@ def bitget_sell():
     headers = bitget_headers("POST", path, body_json)
 
     res = requests.post(BITGET_BASE + path, headers=headers, data=body_json).json()
-    log(f"📦 BITGET SELL: {res}")
+    log(f"📦 BITGET SELL RES | step_before={step} | qty={sell_qty} | resp={res}")
 
     if res.get("code") != "00000":
-        return {"error": res}
+        return {"status": "error", "error": res}
 
     state["bitget"] -= 1
     save_state(state)
 
-    return {"status": "sell ok", "step": state["bitget"]}
+    log(f"✅ BITGET SELL OK | sold={sell_qty} | step_now={state['bitget']}")
+
+    return {
+        "status": "sell ok",
+        "sold_qty": sell_qty,
+        "percent": round(sell_percent * 100, 2),
+        "step_after": state["bitget"]
+    }
+
 
 # =========================================================
 # ========================= OKX ===========================
