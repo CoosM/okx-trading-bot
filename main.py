@@ -410,6 +410,35 @@ def webhook():
             result["okx"] = okx_sell()
         return jsonify(result)
 
+    if action == "set_step":
+        exchange = request.json.get("exchange", "both")
+        new_step = int(request.json.get("step", 0))
+
+        state = load_state()
+
+        # ограничим шаг в разумных пределах
+        if new_step < 0:
+            new_step = 0
+        if new_step > MAX_STEPS:
+            new_step = MAX_STEPS
+
+        if exchange in ("bitget", "both"):
+            state["bitget"] = new_step
+            log(f"⚙️ MANUAL STEP SET | exchange=bitget | step={new_step}")
+
+        if exchange in ("okx", "both"):
+            state["okx"] = new_step
+            log(f"⚙️ MANUAL STEP SET | exchange=okx | step={new_step}")
+
+        save_state(state)
+
+        return jsonify({
+            "status": "step_updated",
+            "exchange": exchange,
+            "step": new_step,
+            "state": state
+        })
+
     return jsonify({"error": "unknown action"}), 400
 
 
