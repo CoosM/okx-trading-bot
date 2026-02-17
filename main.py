@@ -41,6 +41,7 @@ def log(msg):
 def load_state():
     global cached_state, LAST_KNOWN_STATE
 
+    # если уже что-то загружено в память — всегда используем это
     if cached_state is not None:
         return cached_state
 
@@ -52,24 +53,34 @@ def load_state():
         files = r.json()["files"]
 
         if STATE_FILE_NAME not in files:
-            cached_state = {"bitget": 0, "okx": 0}
+            state = {"bitget": 0, "okx": 0}
         else:
             state = json.loads(files[STATE_FILE_NAME]["content"])
-            if "bitget" not in state:
-                state = {"bitget": 0, "okx": 0}
-            cached_state = state
+            # защита от старых форматов
+            if "bitget" not in state or "okx" not in state:
+                state = {"bitget": state.get("bitget", 0), "okx": state.get("okx", 0)}
 
-        LAST_KNOWN_STATE = cached_state
+        cached_state = state
+        LAST_KNOWN_STATE = state
         return cached_state
 
     except Exception as e:
         log(f"⚠️ load_state error: {e}")
-        cached_state = LAST_KNOWN_STATE
-        return cached_state
+
+        # если у нас уже есть что-то в LAST_KNOWN_STATE — используем его
+        if cached_state is not None:
+            return cached_state
+
+        # иначе хотя бы не возвращать None, а последний известный
+        return LAST_KNOWN_STATE
 
 
 def save_state(state):
     global cached_state, LAST_KNOWN_STATE
+
+    # сначала обновим локальные переменные
+    cached_state = state
+    LAST_KNOWN_STATE = state
 
     try:
         url = f"https://api.github.com/gists/{GIST_ID}"
@@ -84,12 +95,10 @@ def save_state(state):
         r = requests.patch(url, headers=HEADERS_GIST, json=payload, timeout=10)
         r.raise_for_status()
 
-        cached_state = state
-        LAST_KNOWN_STATE = state
-
     except Exception as e:
         log(f"⚠️ save_state error: {e}")
-        cached_state = state
+        # здесь НИЧЕГО не трогаем, cached_state и LAST_KNOWN_STATE уже обновлены
+
 
 # =========================================================
 # ====================== BITGET ===========================
