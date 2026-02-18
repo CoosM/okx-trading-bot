@@ -78,10 +78,6 @@ def load_state():
 def save_state(state):
     global cached_state, LAST_KNOWN_STATE
 
-    # сначала обновим локальные переменные
-    cached_state = state
-    LAST_KNOWN_STATE = state
-
     try:
         url = f"https://api.github.com/gists/{GIST_ID}"
         payload = {
@@ -95,9 +91,15 @@ def save_state(state):
         r = requests.patch(url, headers=HEADERS_GIST, json=payload, timeout=10)
         r.raise_for_status()
 
+        log(f"✅ State saved: bitget={state.get('bitget')} okx={state.get('okx')}")
+
+        cached_state = state
+        LAST_KNOWN_STATE = state
+        return True
+
     except Exception as e:
         log(f"⚠️ save_state error: {e}")
-        # здесь НИЧЕГО не трогаем, cached_state и LAST_KNOWN_STATE уже обновлены
+        return False
 
 
 # =========================================================
