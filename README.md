@@ -1,4 +1,4 @@
-# 📈 TradingView DCA Auto Bot
+# 📈 TradingView Engulfing + RSI DCA Exit % (Auto Bot)
 
 ## История проекта
 
