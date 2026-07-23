@@ -1,4 +1,4 @@
-# TradingView Engulfing + RSI DCA Exit % (Auto Bot)
+# 📈 TradingView Engulfing + RSI DCA Exit % (Auto Bot)
 
 Автоматическая система исполнения DCA-стратегии через TradingView Webhook.
 
